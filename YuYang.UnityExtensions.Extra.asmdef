@@ -1,0 +1,15 @@
+{
+    "name": "YuYang.UnityExtensions.Extra",
+    "references": [
+        "GUID:c309ec749dc9952448566f88dfcb37e3"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
