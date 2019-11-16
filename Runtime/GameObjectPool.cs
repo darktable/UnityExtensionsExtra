@@ -118,7 +118,7 @@ namespace UnityExtensions
             {
                 if (_delayDespawnObjects.count == 0 && _unscaledDelayDespawnObjects.count == 0)
                 {
-                    RuntimeUtilities.lateUpdate += GlobalUpdate;
+                    RuntimeUtilities.waitForEndOfFrame += GlobalUpdate;
                 }
 
                 QuickLinkedList<DelayDespawnObject> list;
@@ -186,7 +186,7 @@ namespace UnityExtensions
 
             if (result1 && result2)
             {
-                RuntimeUtilities.lateUpdate -= GlobalUpdate;
+                RuntimeUtilities.waitForEndOfFrame -= GlobalUpdate;
             }
         }
 
