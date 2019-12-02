@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace UnityExtensions
 {
-    [AddComponentMenu("Unity Extensions/Game Object Pool")]
+    [AddComponentMenu("Miscellaneous/Game Object Pool")]
     [DisallowMultipleComponent]
     public class GameObjectPool : ScriptableComponent
     {

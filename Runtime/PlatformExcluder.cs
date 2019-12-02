@@ -2,7 +2,7 @@
 
 namespace UnityExtensions
 {
-    [AddComponentMenu("Unity Extensions/Platform Excluder")]
+    [AddComponentMenu("Miscellaneous/Platform Excluder")]
     public class PlatformExcluder : ScriptableComponent
     {
         [SerializeField, Flags]
