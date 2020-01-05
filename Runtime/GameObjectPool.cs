@@ -28,8 +28,8 @@ namespace UnityExtensions
 
         static Dictionary<GameObject, Stack<GameObject>> _prefabToPool = new Dictionary<GameObject, Stack<GameObject>>();
         static Dictionary<GameObject, Stack<GameObject>> _objectToPool = new Dictionary<GameObject, Stack<GameObject>>();
-        static QuickLinkedList<DelayDespawnObject> _delayDespawnObjects;
-        static QuickLinkedList<DelayDespawnObject> _unscaledDelayDespawnObjects;
+        static LinkedList<DelayDespawnObject> _delayDespawnObjects;
+        static LinkedList<DelayDespawnObject> _unscaledDelayDespawnObjects;
 
 
         void Awake()
@@ -121,18 +121,18 @@ namespace UnityExtensions
                     RuntimeUtilities.waitForEndOfFrame += GlobalUpdate;
                 }
 
-                QuickLinkedList<DelayDespawnObject> list;
+                LinkedList<DelayDespawnObject> list;
                 float time;
 
                 if (timeMode == TimeMode.Normal)
                 {
-                    if (_delayDespawnObjects == null) _delayDespawnObjects = new QuickLinkedList<DelayDespawnObject>();
+                    if (_delayDespawnObjects == null) _delayDespawnObjects = new LinkedList<DelayDespawnObject>();
                     list = _delayDespawnObjects;
                     time = delay + Time.time;
                 }
                 else
                 {
-                    if (_unscaledDelayDespawnObjects == null) _unscaledDelayDespawnObjects = new QuickLinkedList<DelayDespawnObject>();
+                    if (_unscaledDelayDespawnObjects == null) _unscaledDelayDespawnObjects = new LinkedList<DelayDespawnObject>();
                     list = _unscaledDelayDespawnObjects;
                     time = delay + Time.unscaledTime;
                 }
@@ -160,7 +160,7 @@ namespace UnityExtensions
 
         static void GlobalUpdate()
         {
-            bool CheckList(QuickLinkedList<DelayDespawnObject> list, float time)
+            bool CheckList(LinkedList<DelayDespawnObject> list, float time)
             {
                 if (list != null)
                 {
