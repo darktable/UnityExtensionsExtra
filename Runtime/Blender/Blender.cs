@@ -20,6 +20,17 @@ namespace UnityExtensions
         T _eventsOutput;
 
         /// <summary>
+        /// 任意通道的新增、删除、修改都会触发
+        /// </summary>
+        public event Action onChannelsChange;
+
+        void SetChannelsChanged()
+        {
+            _channelsChanged = true;
+            onChannelsChange?.Invoke();
+        }
+
+        /// <summary>
         /// 混合通道
         /// </summary>
         public class Channel : IDisposable
@@ -38,7 +49,7 @@ namespace UnityExtensions
                     if (!_blender.Equals(_value, value))
                     {
                         _value = value;
-                        _blender._channelsChanged = true;
+                        _blender.SetChannelsChanged();
                     }
                 }
             }
@@ -49,13 +60,13 @@ namespace UnityExtensions
                 _blender = blender;
 
                 _blender._channels.Add(this);
-                _blender._channelsChanged = true;
+                _blender.SetChannelsChanged();
             }
 
             public void Dispose()
             {
                 _blender._channels.Remove(this);
-                _blender._channelsChanged = true;
+                _blender.SetChannelsChanged();
                 _blender = null;
             }
         }
