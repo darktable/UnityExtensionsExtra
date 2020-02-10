@@ -7,7 +7,7 @@ namespace UnityExtensions
     /// 一维混合事件预设
     /// </summary>
     [Serializable]
-    public struct BlendingEventPreset1D
+    public struct FloatBlendingEventPreset
     {
         [Min(0)]
         public float startDelay;
@@ -26,7 +26,7 @@ namespace UnityExtensions
     /// 二维混合事件预设
     /// </summary>
     [Serializable]
-    public struct BlendingEventPreset2D
+    public struct Vector2BlendingEventPreset
     {
         [Min(0)]
         public float startDelay;

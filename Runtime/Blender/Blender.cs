@@ -241,7 +241,26 @@ namespace UnityExtensions
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class Blender1D : Blender<float>
+    public abstract class BoolBlender : Blender<bool>
+    {
+        public sealed override bool Scale(bool a, float b)
+        {
+            return b > 0 && a;
+        }
+
+        public sealed override bool Equals(bool a, bool b)
+        {
+            return a == b;
+        }
+
+    } // class BoolBlender
+
+
+    /// <summary>
+    /// 混合控制器，用于控制多输入单输出。
+    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
+    /// </summary>
+    public abstract class FloatBlender : Blender<float>
     {
         public sealed override float Scale(float a, float b)
         {
@@ -257,19 +276,19 @@ namespace UnityExtensions
         /// 创建事件
         /// 事件在超过作用时间后自动移除
         /// </summary>
-        public void CreateEvent(BlendingEventPreset1D preset)
+        public void CreateEvent(FloatBlendingEventPreset preset)
         {
             CreateEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
 
-    } // class Blender1D
+    } // class FloatBlender
 
 
     /// <summary>
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class Blender2D : Blender<Vector2>
+    public abstract class Vector2Blender : Blender<Vector2>
     {
         public sealed override Vector2 Scale(Vector2 a, float b)
         {
@@ -285,19 +304,61 @@ namespace UnityExtensions
         /// 创建事件
         /// 事件在超过作用时间后自动移除
         /// </summary>
-        public void CreateEvent(BlendingEventPreset2D preset)
+        public void CreateEvent(Vector2BlendingEventPreset preset)
         {
             CreateEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
 
-    } // class Blender2D
+    } // class Vector2Blender
+
+
+    /// <summary>
+    /// 与混合控制器，用于控制多输入单输出。
+    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
+    /// </summary>
+    public class BoolAndBlender : BoolBlender
+    {
+        public sealed override bool Blend(bool a, bool b)
+        {
+            return a && b;
+        }
+
+#if UNITY_EDITOR
+        protected override void Reset()
+        {
+            base.Reset();
+            baseChannelValue = true;
+        }
+#endif
+    }
+
+
+    /// <summary>
+    /// 或混合控制器，用于控制多输入单输出。
+    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
+    /// </summary>
+    public class BoolOrBlender : BoolBlender
+    {
+        public sealed override bool Blend(bool a, bool b)
+        {
+            return a || b;
+        }
+
+#if UNITY_EDITOR
+        protected override void Reset()
+        {
+            base.Reset();
+            baseChannelValue = false;
+        }
+#endif
+    }
 
 
     /// <summary>
     /// 加法混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class AdditiveBlender1D : Blender1D
+    public class FloatAdditiveBlender : FloatBlender
     {
         public sealed override float Blend(float a, float b)
         {
@@ -318,7 +379,7 @@ namespace UnityExtensions
     /// 乘法混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MultiplyBlender1D : Blender1D
+    public class FloatMultiplyBlender : FloatBlender
     {
         public sealed override float Blend(float a, float b)
         {
@@ -339,7 +400,7 @@ namespace UnityExtensions
     /// 最大值混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MaximumBlender1D : Blender1D
+    public class FloatMaximumBlender : FloatBlender
     {
         public sealed override float Blend(float a, float b)
         {
@@ -360,7 +421,7 @@ namespace UnityExtensions
     /// 最小值混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MinimumBlender1D : Blender1D
+    public class FloatMinimumBlender : FloatBlender
     {
         public sealed override float Blend(float a, float b)
         {
@@ -381,7 +442,7 @@ namespace UnityExtensions
     /// 加法混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class AdditiveBlender2D : Blender2D
+    public class Vector2AdditiveBlender : Vector2Blender
     {
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -402,7 +463,7 @@ namespace UnityExtensions
     /// 乘法混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MultiplyBlender2D : Blender2D
+    public class Vector2MultiplyBlender : Vector2Blender
     {
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -423,7 +484,7 @@ namespace UnityExtensions
     /// 最大值混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MaximumBlender2D : Blender2D
+    public class Vector2MaximumBlender : Vector2Blender
     {
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -444,7 +505,7 @@ namespace UnityExtensions
     /// 最小值混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public class MinimumBlender2D : Blender2D
+    public class Vector2MinimumBlender : Vector2Blender
     {
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
