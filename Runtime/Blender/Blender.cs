@@ -8,18 +8,15 @@ namespace UnityExtensions
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class Blender<T> : ScriptableComponent
+    public abstract class Blender<T>
     {
-        [SerializeField]
-        T _baseChannelValue;
-
         List<Channel> _channels;
         List<Event> _events;
 
-        bool _channelsChanged = true;
+        bool _channelsChanged;
         T _channelsOutput;
 
-        bool _hasEventsOutput = false;
+        bool _hasEventsOutput;
         T _eventsOutput;
 
         /// <summary>
@@ -74,6 +71,10 @@ namespace UnityExtensions
 
             public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
         }
+
+        public Blender() => _channelsOutput = defaultValue;
+
+        public abstract T defaultValue { get; }
 
         /// <summary>
         /// 判断两个值是否相等
@@ -172,25 +173,9 @@ namespace UnityExtensions
         }
 
         /// <summary>
-        /// 创建的通道总数（不包含基本通道）
+        /// 通道总数
         /// </summary>
-        public int createdChannelCount => _channels == null ? 0 : _channels.Count;
-
-        /// <summary>
-        /// 基本通道值
-        /// </summary>
-        public T baseChannelValue
-        {
-            get => _baseChannelValue;
-            set
-            {
-                if (!Equals(_baseChannelValue, value))
-                {
-                    _baseChannelValue = value;
-                    _channelsChanged = true;
-                }
-            }
-        }
+        public int channelCount => _channels == null ? 0 : _channels.Count;
 
         /// <summary>
         /// 所有通道混合后的输出值
@@ -201,7 +186,7 @@ namespace UnityExtensions
             {
                 if (_channelsChanged)
                 {
-                    _channelsOutput = _baseChannelValue;
+                    _channelsOutput = defaultValue;
                     if (!RuntimeUtilities.IsNullOrEmpty(_channels))
                     {
                         for (int i = 0; i < _channels.Count; i++)
@@ -217,22 +202,6 @@ namespace UnityExtensions
         /// 最终输出值
         /// </summary>
         public T outputValue => _hasEventsOutput ? Blend(channelsOutputValue, _eventsOutput) : channelsOutputValue;
-
-#if UNITY_EDITOR
-        protected virtual void Reset()
-        {
-            _channels = null;
-            _events = null;
-
-            _channelsChanged = true;
-            _hasEventsOutput = false;
-        }
-
-        void OnValidate()
-        {
-            _channelsChanged = true;
-        }
-#endif
 
     } // class Blender<T>
 
@@ -318,18 +287,12 @@ namespace UnityExtensions
     /// </summary>
     public class BoolAndBlender : BoolBlender
     {
+        public override bool defaultValue => true;
+
         public sealed override bool Blend(bool a, bool b)
         {
             return a && b;
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = true;
-        }
-#endif
     }
 
 
@@ -339,18 +302,12 @@ namespace UnityExtensions
     /// </summary>
     public class BoolOrBlender : BoolBlender
     {
+        public override bool defaultValue => false;
+
         public sealed override bool Blend(bool a, bool b)
         {
             return a || b;
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = false;
-        }
-#endif
     }
 
 
@@ -360,18 +317,14 @@ namespace UnityExtensions
     /// </summary>
     public class FloatAdditiveBlender : FloatBlender
     {
+        public override float defaultValue => 0f;
+
+        public float channelsAverageValue => channelsOutputValue / channelCount;
+
         public sealed override float Blend(float a, float b)
         {
             return a + b;
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = 0;
-        }
-#endif
     }
 
 
@@ -381,18 +334,12 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMultiplyBlender : FloatBlender
     {
+        public override float defaultValue => 1f;
+
         public sealed override float Blend(float a, float b)
         {
             return a * b;
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = 1;
-        }
-#endif
     }
 
 
@@ -402,18 +349,12 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMaximumBlender : FloatBlender
     {
+        public override float defaultValue => float.MinValue;
+
         public sealed override float Blend(float a, float b)
         {
             return Mathf.Max(a, b);
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = 0;
-        }
-#endif
     }
 
 
@@ -423,18 +364,12 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMinimumBlender : FloatBlender
     {
+        public override float defaultValue => float.MaxValue;
+
         public sealed override float Blend(float a, float b)
         {
             return Mathf.Min(a, b);
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = 1;
-        }
-#endif
     }
 
 
@@ -444,18 +379,14 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2AdditiveBlender : Vector2Blender
     {
+        public override Vector2 defaultValue => new Vector2();
+
+        public Vector2 channelsAverageValue => channelsOutputValue / channelCount;
+
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
             return a + b;
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = new Vector2(0, 0);
-        }
-#endif
     }
 
 
@@ -465,18 +396,12 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MultiplyBlender : Vector2Blender
     {
+        public override Vector2 defaultValue => new Vector2(1f, 1f);
+
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
             return Vector2.Scale(a, b);
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = new Vector2(1, 1);
-        }
-#endif
     }
 
 
@@ -486,18 +411,12 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MaximumBlender : Vector2Blender
     {
+        public override Vector2 defaultValue => new Vector2(float.MinValue, float.MinValue);
+
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
             return Vector2.Max(a, b);
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = new Vector2(0, 0);
-        }
-#endif
     }
 
 
@@ -507,18 +426,12 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MinimumBlender : Vector2Blender
     {
+        public override Vector2 defaultValue => new Vector2(float.MaxValue, float.MaxValue);
+
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
             return Vector2.Min(a, b);
         }
-
-#if UNITY_EDITOR
-        protected override void Reset()
-        {
-            base.Reset();
-            baseChannelValue = new Vector2(1, 1);
-        }
-#endif
     }
 
 } // namespace UnityExtensions
