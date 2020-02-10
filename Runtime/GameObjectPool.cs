@@ -11,36 +11,23 @@ namespace UnityExtensions
         struct PoolSettings
         {
             public GameObject prefab;
-            public int preallocateCount;
+            public int initialQuantity;
         }
-
-
-        struct DelayDespawnObject
-        {
-            public float time;
-            public GameObject gameObject;
-        }
-
 
         [SerializeField]
         PoolSettings[] _poolSettings = default;
 
-
         static Dictionary<GameObject, Stack<GameObject>> _prefabToPool = new Dictionary<GameObject, Stack<GameObject>>();
         static Dictionary<GameObject, Stack<GameObject>> _objectToPool = new Dictionary<GameObject, Stack<GameObject>>();
-        static LinkedList<DelayDespawnObject> _delayDespawnObjects;
-        static LinkedList<DelayDespawnObject> _unscaledDelayDespawnObjects;
-
 
         void Awake()
         {
             for (int i = 0; i < _poolSettings.Length; i++)
             {
                 ref var s = ref _poolSettings[i];
-                Prepare(s.prefab, s.preallocateCount);
+                Prepare(s.prefab, s.initialQuantity);
             }
         }
-
 
         public static void Prepare(GameObject prefab, int quantity)
         {
@@ -62,7 +49,6 @@ namespace UnityExtensions
             }
         }
 
-
         public static void DestroyUnused(GameObject prefab)
         {
             if (prefab && _prefabToPool.TryGetValue(prefab, out var pool))
@@ -74,7 +60,6 @@ namespace UnityExtensions
             }
         }
 
-
         public static GameObject Spawn(GameObject prefab)
         {
             if (!_prefabToPool.TryGetValue(prefab, out var pool))
@@ -83,9 +68,7 @@ namespace UnityExtensions
                 _prefabToPool.Add(prefab, pool);
             }
             
-            if (pool.Count == 0) Prepare(prefab, 1);
-
-            var obj = pool.Pop();
+            var obj = pool.Count == 0 ? Instantiate(prefab) : pool.Pop();
             _objectToPool.Add(obj, pool);
 
             obj.transform.SetParent(null, false);
@@ -93,7 +76,6 @@ namespace UnityExtensions
 
             return obj;
         }
-
 
         public static bool Despawn(GameObject gameObject)
         {
@@ -107,89 +89,8 @@ namespace UnityExtensions
 
                 return true;
             }
-
             return false;
         }
-
-
-        public static void Despawn(GameObject gameObject, float delay, TimeMode timeMode = TimeMode.Normal)
-        {
-            if (delay > 0f)
-            {
-                if (_delayDespawnObjects.count == 0 && _unscaledDelayDespawnObjects.count == 0)
-                {
-                    RuntimeUtilities.waitForEndOfFrame += GlobalUpdate;
-                }
-
-                LinkedList<DelayDespawnObject> list;
-                float time;
-
-                if (timeMode == TimeMode.Normal)
-                {
-                    if (_delayDespawnObjects == null) _delayDespawnObjects = new LinkedList<DelayDespawnObject>();
-                    list = _delayDespawnObjects;
-                    time = delay + Time.time;
-                }
-                else
-                {
-                    if (_unscaledDelayDespawnObjects == null) _unscaledDelayDespawnObjects = new LinkedList<DelayDespawnObject>();
-                    list = _unscaledDelayDespawnObjects;
-                    time = delay + Time.unscaledTime;
-                }
-
-                var newNodeValue = new DelayDespawnObject { time = time, gameObject = gameObject };
-
-                int id = list.last;
-                while (id >= 0)
-                {
-                    var node = list.GetNode(id);
-
-                    if (node.value.time <= newNodeValue.time)
-                    {
-                        list.AddAfter(id, newNodeValue);
-                        return;
-                    }
-
-                    id = node.previous;
-                }
-                list.AddFirst(newNodeValue);
-            }
-            else Despawn(gameObject);
-        }
-
-
-        static void GlobalUpdate()
-        {
-            bool CheckList(LinkedList<DelayDespawnObject> list, float time)
-            {
-                if (list != null)
-                {
-                    while (list.first >= 0)
-                    {
-                        var item = list[list.first];
-
-                        if (item.time > time)
-                        {
-                            return false;
-                        }
-
-                        Despawn(item.gameObject);
-
-                        list.RemoveFirst();
-                    }
-                }
-                return true;
-            }
-
-            bool result1 = CheckList(_delayDespawnObjects, Time.time);
-            bool result2 = CheckList(_unscaledDelayDespawnObjects, Time.unscaledTime);
-
-            if (result1 && result2)
-            {
-                RuntimeUtilities.waitForEndOfFrame -= GlobalUpdate;
-            }
-        }
-
 
         public static void DespawnAll()
         {
@@ -203,10 +104,7 @@ namespace UnityExtensions
                     p.Value.Push(p.Key);
                 }
             }
-
             _objectToPool.Clear();
-            if (_delayDespawnObjects != null) _delayDespawnObjects.Clear();
-            if (_unscaledDelayDespawnObjects != null) _unscaledDelayDespawnObjects.Clear();
         }
 
     } // class GameObjectPool

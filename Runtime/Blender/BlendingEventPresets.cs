@@ -4,10 +4,10 @@ using UnityEngine;
 namespace UnityExtensions
 {
     /// <summary>
-    /// 一维混合事件设置
+    /// 一维混合事件预设
     /// </summary>
     [Serializable]
-    public struct BlendEventSettings1D
+    public struct BlendingEventPreset1D
     {
         [Min(0)]
         public float startDelay;
@@ -17,16 +17,16 @@ namespace UnityExtensions
 
         public float value;
 
-        [Tooltip("Input and output are normalized.")]
+        [Tooltip("Input & output are normalized.")]
         public AnimationCurve attenuation;
     }
 
 
     /// <summary>
-    /// 二维混合事件设置
+    /// 二维混合事件预设
     /// </summary>
     [Serializable]
-    public struct BlendEventSettings2D
+    public struct BlendingEventPreset2D
     {
         [Min(0)]
         public float startDelay;
@@ -36,7 +36,7 @@ namespace UnityExtensions
 
         public Vector2 value;
 
-        [Tooltip("Input and output are normalized.")]
+        [Tooltip("Input & output are normalized.")]
         public AnimationCurve attenuation;
     }
 
