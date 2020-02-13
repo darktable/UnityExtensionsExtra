@@ -321,9 +321,7 @@ namespace UnityExtensions
     /// </summary>
     public class BoolAndBlender : BoolBlender
     {
-        public BoolAndBlender(bool defaultValue) : base(defaultValue) { }
-
-        public BoolAndBlender() : base(true) { }
+        public BoolAndBlender(bool defaultValue = true) : base(defaultValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -338,9 +336,7 @@ namespace UnityExtensions
     /// </summary>
     public class BoolOrBlender : BoolBlender
     {
-        public BoolOrBlender(bool defaultValue) : base(defaultValue) { }
-
-        public BoolOrBlender() : base(false) { }
+        public BoolOrBlender(bool defaultValue = false) : base(defaultValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -355,9 +351,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatAdditiveBlender : FloatBlender
     {
-        public FloatAdditiveBlender(float defaultValue) : base(defaultValue) { }
-
-        public FloatAdditiveBlender() : base(0) { }
+        public FloatAdditiveBlender(float defaultValue = 0f) : base(defaultValue) { }
 
         public float channelsAverageValue => channelsOutputValue / channelCount;
 
@@ -374,9 +368,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMultiplyBlender : FloatBlender
     {
-        public FloatMultiplyBlender(float defaultValue) : base(defaultValue) { }
-
-        public FloatMultiplyBlender() : base(1f) { }
+        public FloatMultiplyBlender(float defaultValue = 1f) : base(defaultValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -421,9 +413,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2AdditiveBlender : Vector2Blender
     {
-        public Vector2AdditiveBlender(Vector2 defaultValue) : base(defaultValue) { }
-
-        public Vector2AdditiveBlender() : base(default) { }
+        public Vector2AdditiveBlender(Vector2 defaultValue = new Vector2()) : base(defaultValue) { }
 
         public Vector2 channelsAverageValue => channelsOutputValue / channelCount;
 
