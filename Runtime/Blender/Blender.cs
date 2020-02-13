@@ -13,6 +13,8 @@ namespace UnityExtensions
         List<Channel> _channels;
         List<Event> _events;
 
+        T _defaultValue;
+
         bool _channelsChanged;
         T _channelsOutput;
 
@@ -83,9 +85,24 @@ namespace UnityExtensions
             public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
         }
 
-        public Blender() => _channelsOutput = defaultValue;
+        public Blender(T defaultValue)
+        {
+            _defaultValue = defaultValue;
+            _channelsOutput = defaultValue;
+        }
 
-        public abstract T defaultValue { get; }
+        public T defaultValue
+        {
+            get => _defaultValue;
+            set
+            {
+                if (!Equals(_defaultValue, value))
+                {
+                    _defaultValue = value;
+                    SetChannelsChanged();
+                }
+            }
+        }
 
         /// <summary>
         /// 判断两个值是否相等
@@ -223,6 +240,8 @@ namespace UnityExtensions
     /// </summary>
     public abstract class BoolBlender : Blender<bool>
     {
+        public BoolBlender(bool defaultValue) : base(defaultValue) { }
+
         public sealed override bool Scale(bool a, float b)
         {
             return b > 0 && a;
@@ -242,6 +261,8 @@ namespace UnityExtensions
     /// </summary>
     public abstract class FloatBlender : Blender<float>
     {
+        public FloatBlender(float defaultValue) : base(defaultValue) { }
+
         public sealed override float Scale(float a, float b)
         {
             return a * b;
@@ -270,6 +291,8 @@ namespace UnityExtensions
     /// </summary>
     public abstract class Vector2Blender : Blender<Vector2>
     {
+        public Vector2Blender(Vector2 defaultValue) : base(defaultValue) { }
+     
         public sealed override Vector2 Scale(Vector2 a, float b)
         {
             return a * b;
@@ -298,7 +321,9 @@ namespace UnityExtensions
     /// </summary>
     public class BoolAndBlender : BoolBlender
     {
-        public override bool defaultValue => true;
+        public BoolAndBlender(bool defaultValue) : base(defaultValue) { }
+
+        public BoolAndBlender() : base(true) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -313,7 +338,9 @@ namespace UnityExtensions
     /// </summary>
     public class BoolOrBlender : BoolBlender
     {
-        public override bool defaultValue => false;
+        public BoolOrBlender(bool defaultValue) : base(defaultValue) { }
+
+        public BoolOrBlender() : base(false) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -328,7 +355,9 @@ namespace UnityExtensions
     /// </summary>
     public class FloatAdditiveBlender : FloatBlender
     {
-        public override float defaultValue => 0f;
+        public FloatAdditiveBlender(float defaultValue) : base(defaultValue) { }
+
+        public FloatAdditiveBlender() : base(0) { }
 
         public float channelsAverageValue => channelsOutputValue / channelCount;
 
@@ -345,7 +374,9 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMultiplyBlender : FloatBlender
     {
-        public override float defaultValue => 1f;
+        public FloatMultiplyBlender(float defaultValue) : base(defaultValue) { }
+
+        public FloatMultiplyBlender() : base(1f) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -360,7 +391,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMaximumBlender : FloatBlender
     {
-        public override float defaultValue => float.MinValue;
+        public FloatMaximumBlender(float defaultValue) : base(defaultValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -375,7 +406,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMinimumBlender : FloatBlender
     {
-        public override float defaultValue => float.MaxValue;
+        public FloatMinimumBlender(float defaultValue) : base(defaultValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -390,7 +421,9 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2AdditiveBlender : Vector2Blender
     {
-        public override Vector2 defaultValue => new Vector2();
+        public Vector2AdditiveBlender(Vector2 defaultValue) : base(defaultValue) { }
+
+        public Vector2AdditiveBlender() : base(default) { }
 
         public Vector2 channelsAverageValue => channelsOutputValue / channelCount;
 
@@ -407,7 +440,9 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MultiplyBlender : Vector2Blender
     {
-        public override Vector2 defaultValue => new Vector2(1f, 1f);
+        public Vector2MultiplyBlender(Vector2 defaultValue) : base(defaultValue) { }
+
+        public Vector2MultiplyBlender() : base(new Vector2(1f, 1f)) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -422,7 +457,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MaximumBlender : Vector2Blender
     {
-        public override Vector2 defaultValue => new Vector2(float.MinValue, float.MinValue);
+        public Vector2MaximumBlender(Vector2 defaultValue) : base(defaultValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -437,7 +472,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MinimumBlender : Vector2Blender
     {
-        public override Vector2 defaultValue => new Vector2(float.MaxValue, float.MaxValue);
+        public Vector2MinimumBlender(Vector2 defaultValue) : base(defaultValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
