@@ -8,71 +8,8 @@ namespace UnityExtensions
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class Blender<T>
+    public abstract class Blender<T> : BaseBlendingChannel<T>
     {
-        List<Channel> _channels;
-        List<Event> _events;
-
-        T _defaultValue;
-
-        bool _channelsChanged;
-        T _channelsOutput;
-
-        bool _hasEventsOutput;
-        T _eventsOutput;
-
-        /// <summary>
-        /// 任意通道的新增、删除、修改都会触发
-        /// </summary>
-        public event Action onChannelsChange;
-
-        void SetChannelsChanged()
-        {
-            _channelsChanged = true;
-            onChannelsChange?.Invoke();
-        }
-
-        /// <summary>
-        /// 混合通道
-        /// </summary>
-        public class Channel : IDisposable
-        {
-            T _value;
-            Blender<T> _blender;
-
-            /// <summary>
-            /// 通道值
-            /// </summary>
-            public T value
-            {
-                get => _value;
-                set
-                {
-                    if (!_blender.Equals(_value, value))
-                    {
-                        _value = value;
-                        _blender.SetChannelsChanged();
-                    }
-                }
-            }
-
-            internal Channel(T value, Blender<T> blender)
-            {
-                _value = value;
-                _blender = blender;
-
-                _blender._channels.Add(this);
-                _blender.SetChannelsChanged();
-            }
-
-            public void Dispose()
-            {
-                _blender._channels.Remove(this);
-                _blender.SetChannelsChanged();
-                _blender = null;
-            }
-        }
-
         // 混合事件
         private struct Event
         {
@@ -85,49 +22,107 @@ namespace UnityExtensions
             public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
         }
 
-        public Blender(T defaultValue)
-        {
-            _defaultValue = defaultValue;
-            _channelsOutput = defaultValue;
-        }
+        List<BaseBlendingChannel<T>> _channels;
+        List<Event> _events;
 
-        public T defaultValue
+        T _baseValue;
+
+        bool _channelsChanged;
+        T _channelsValue;
+
+        bool _hasEventsValue;
+        T _eventsValue;
+
+        /// <summary>
+        /// 任意通道的新增、删除、修改都会触发
+        /// </summary>
+        public event Action onChannelsChange;
+
+        /// <summary>
+        /// 通道总数
+        /// </summary>
+        public int channelCount => _channels == null ? 0 : _channels.Count;
+
+        public T baseValue
         {
-            get => _defaultValue;
+            get => _baseValue;
             set
             {
-                if (!Equals(_defaultValue, value))
+                if (!Equals(_baseValue, value))
                 {
-                    _defaultValue = value;
-                    SetChannelsChanged();
+                    _baseValue = value;
+                    OnChannelsChange();
                 }
             }
         }
 
         /// <summary>
-        /// 判断两个值是否相等
+        /// 所有通道混合后的输出值
         /// </summary>
-        public abstract bool Equals(T a, T b);
-
-        /// <summary>
-        /// 混合值
-        /// </summary>
-        public abstract T Blend(T a, T b);
-
-        /// <summary>
-        /// 缩放值
-        /// </summary>
-        public abstract T Scale(T a, float b);
-
-        /// <summary>
-        /// 创建通道 
-        /// 当通道不再使用时，必须使用 Dispose 移除
-        /// </summary>
-        public Channel CreateChannel(T value)
+        public T channelsValue
         {
-            if (_channels == null) _channels = new List<Channel>(4);
-            var channel = new Channel(value, this);
-            return channel;
+            get
+            {
+                if (_channelsChanged)
+                {
+                    _channelsValue = baseValue;
+                    if (!RuntimeUtilities.IsNullOrEmpty(_channels))
+                    {
+                        for (int i = 0; i < _channels.Count; i++)
+                            _channelsValue = Blend(_channelsValue, _channels[i].value);
+                    }
+                    _channelsChanged = false;
+                }
+                return _channelsValue;
+            }
+        }
+
+        public override T value
+        {
+            get
+            {
+                return _hasEventsValue? Blend(channelsValue, _eventsValue) : channelsValue;
+            }
+            set => throw new NotSupportedException();
+        }
+
+        public Blender(T baseValue)
+        {
+            _baseValue = baseValue;
+            _channelsValue = baseValue;
+        }
+
+        public void AddChannel(BaseBlendingChannel<T> channel)
+        {
+            if (channel.parent != null)
+            {
+                throw new Exception("Parent of channel is not null.");
+            }
+
+            if (_channels == null) _channels = new List<BaseBlendingChannel<T>>(4);
+
+            channel.parent = this;
+            _channels.Add(channel);
+            OnChannelsChange();
+        }
+
+        public void RemoveChannel(BaseBlendingChannel<T> channel)
+        {
+            if (channel.parent != this)
+            {
+                throw new Exception("Parent of channel is not this.");
+            }
+
+            channel.parent = null;
+            _channels.Remove(channel);
+            OnChannelsChange();
+        }
+
+        internal void OnChannelsChange()
+        {
+            _channelsChanged = true;
+            onChannelsChange?.Invoke();
+            parent?.OnChannelsChange();
         }
 
         /// <summary>
@@ -135,7 +130,7 @@ namespace UnityExtensions
         /// 事件在超过作用时间后自动移除
         /// </summary>
         /// <param name="attenuation"> 曲线的 Y 值被截断为非负数 </param>
-        public void CreateEvent(float startDelay, float duration, T value, AnimationCurve attenuation)
+        public void AddEvent(float startDelay, float duration, T value, AnimationCurve attenuation)
         {
             if (_events == null) _events = new List<Event>(4);
             _events.Add(new Event
@@ -153,7 +148,9 @@ namespace UnityExtensions
         /// </summary>
         public void UpdateEvents(float deltaTime)
         {
-            _hasEventsOutput = false;
+            bool lastHasEventsValue = _hasEventsValue;
+            _hasEventsValue = false;
+
             if (!RuntimeUtilities.IsNullOrEmpty(_events))
             {
                 Event e;
@@ -186,50 +183,39 @@ namespace UnityExtensions
                         }
                         else _events[i] = e;
 
-                        if (_hasEventsOutput)
+                        if (_hasEventsValue)
                         {
-                            _eventsOutput = Blend(_eventsOutput, Scale(e.value, e.currentScaleFactor));
+                            _eventsValue = Blend(_eventsValue, Scale(e.value, e.currentScaleFactor));
                         }
                         else
                         {
-                            _hasEventsOutput = true;
-                            _eventsOutput = Scale(e.value, e.currentScaleFactor);
+                            _hasEventsValue = true;
+                            _eventsValue = Scale(e.value, e.currentScaleFactor);
                         }
                     }
                 }
-            }
-        }
 
-        /// <summary>
-        /// 通道总数
-        /// </summary>
-        public int channelCount => _channels == null ? 0 : _channels.Count;
-
-        /// <summary>
-        /// 所有通道混合后的输出值
-        /// </summary>
-        public T channelsOutputValue
-        {
-            get
-            {
-                if (_channelsChanged)
+                if (!lastHasEventsValue || !_hasEventsValue)
                 {
-                    _channelsOutput = defaultValue;
-                    if (!RuntimeUtilities.IsNullOrEmpty(_channels))
-                    {
-                        for (int i = 0; i < _channels.Count; i++)
-                            _channelsOutput = Blend(_channelsOutput, _channels[i].value);
-                    }
-                    _channelsChanged = false;
+                    parent?.OnChannelsChange();
                 }
-                return _channelsOutput;
             }
         }
 
         /// <summary>
-        /// 最终输出值
+        /// 判断两个值是否相等
         /// </summary>
-        public T outputValue => _hasEventsOutput ? Blend(channelsOutputValue, _eventsOutput) : channelsOutputValue;
+        public abstract bool Equals(T a, T b);
+
+        /// <summary>
+        /// 混合值
+        /// </summary>
+        public abstract T Blend(T a, T b);
+
+        /// <summary>
+        /// 缩放值
+        /// </summary>
+        public abstract T Scale(T a, float b);
 
     } // class Blender<T>
 
@@ -240,7 +226,7 @@ namespace UnityExtensions
     /// </summary>
     public abstract class BoolBlender : Blender<bool>
     {
-        public BoolBlender(bool defaultValue) : base(defaultValue) { }
+        public BoolBlender(bool baseValue) : base(baseValue) { }
 
         public sealed override bool Scale(bool a, float b)
         {
@@ -261,7 +247,7 @@ namespace UnityExtensions
     /// </summary>
     public abstract class FloatBlender : Blender<float>
     {
-        public FloatBlender(float defaultValue) : base(defaultValue) { }
+        public FloatBlender(float baseValue) : base(baseValue) { }
 
         public sealed override float Scale(float a, float b)
         {
@@ -279,7 +265,7 @@ namespace UnityExtensions
         /// </summary>
         public void CreateEvent(FloatBlendingEventPreset preset)
         {
-            CreateEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
+            AddEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
 
     } // class FloatBlender
@@ -291,7 +277,7 @@ namespace UnityExtensions
     /// </summary>
     public abstract class Vector2Blender : Blender<Vector2>
     {
-        public Vector2Blender(Vector2 defaultValue) : base(defaultValue) { }
+        public Vector2Blender(Vector2 baseValue) : base(baseValue) { }
      
         public sealed override Vector2 Scale(Vector2 a, float b)
         {
@@ -309,7 +295,7 @@ namespace UnityExtensions
         /// </summary>
         public void CreateEvent(Vector2BlendingEventPreset preset)
         {
-            CreateEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
+            AddEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
 
     } // class Vector2Blender
@@ -321,7 +307,7 @@ namespace UnityExtensions
     /// </summary>
     public class BoolAndBlender : BoolBlender
     {
-        public BoolAndBlender(bool defaultValue = true) : base(defaultValue) { }
+        public BoolAndBlender(bool baseValue = true) : base(baseValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -336,7 +322,7 @@ namespace UnityExtensions
     /// </summary>
     public class BoolOrBlender : BoolBlender
     {
-        public BoolOrBlender(bool defaultValue = false) : base(defaultValue) { }
+        public BoolOrBlender(bool baseValue = false) : base(baseValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -351,9 +337,9 @@ namespace UnityExtensions
     /// </summary>
     public class FloatAdditiveBlender : FloatBlender
     {
-        public FloatAdditiveBlender(float defaultValue = 0f) : base(defaultValue) { }
+        public FloatAdditiveBlender(float baseValue = 0f) : base(baseValue) { }
 
-        public float channelsAverageValue => channelsOutputValue / channelCount;
+        public float channelsAverageValue => channelsValue / channelCount;
 
         public sealed override float Blend(float a, float b)
         {
@@ -368,7 +354,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMultiplyBlender : FloatBlender
     {
-        public FloatMultiplyBlender(float defaultValue = 1f) : base(defaultValue) { }
+        public FloatMultiplyBlender(float baseValue = 1f) : base(baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -383,7 +369,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMaximumBlender : FloatBlender
     {
-        public FloatMaximumBlender(float defaultValue) : base(defaultValue) { }
+        public FloatMaximumBlender(float baseValue) : base(baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -398,7 +384,7 @@ namespace UnityExtensions
     /// </summary>
     public class FloatMinimumBlender : FloatBlender
     {
-        public FloatMinimumBlender(float defaultValue) : base(defaultValue) { }
+        public FloatMinimumBlender(float baseValue) : base(baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -413,9 +399,9 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2AdditiveBlender : Vector2Blender
     {
-        public Vector2AdditiveBlender(Vector2 defaultValue = new Vector2()) : base(defaultValue) { }
+        public Vector2AdditiveBlender(Vector2 baseValue = new Vector2()) : base(baseValue) { }
 
-        public Vector2 channelsAverageValue => channelsOutputValue / channelCount;
+        public Vector2 channelsAverageValue => channelsValue / channelCount;
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -430,7 +416,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MultiplyBlender : Vector2Blender
     {
-        public Vector2MultiplyBlender(Vector2 defaultValue) : base(defaultValue) { }
+        public Vector2MultiplyBlender(Vector2 baseValue) : base(baseValue) { }
 
         public Vector2MultiplyBlender() : base(new Vector2(1f, 1f)) { }
 
@@ -447,7 +433,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MaximumBlender : Vector2Blender
     {
-        public Vector2MaximumBlender(Vector2 defaultValue) : base(defaultValue) { }
+        public Vector2MaximumBlender(Vector2 baseValue) : base(baseValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -462,7 +448,7 @@ namespace UnityExtensions
     /// </summary>
     public class Vector2MinimumBlender : Vector2Blender
     {
-        public Vector2MinimumBlender(Vector2 defaultValue) : base(defaultValue) { }
+        public Vector2MinimumBlender(Vector2 baseValue) : base(baseValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
