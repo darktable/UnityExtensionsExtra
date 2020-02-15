@@ -6,32 +6,13 @@ namespace UnityExtensions
 {
     /// <summary>
     /// 混合控制器，用于控制多输入单输出。
-    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public abstract class Blender<T> : BaseBlendingChannel<T>
     {
-        // 混合事件
-        private struct Event
-        {
-            public float time01;
-            public T value;
-            public float startDelay;
-            public float duration;
-            public AnimationCurve attenuation;
-
-            public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
-        }
-
         List<BaseBlendingChannel<T>> _channels;
-        List<Event> _events;
-
         T _baseValue;
-
         bool _channelsChanged;
         T _channelsValue;
-
-        bool _hasEventsValue;
-        T _eventsValue;
 
         /// <summary>
         /// 任意通道的新增、删除、修改都会触发
@@ -77,12 +58,12 @@ namespace UnityExtensions
             }
         }
 
+        /// <summary>
+        /// Final output
+        /// </summary>
         public override T value
         {
-            get
-            {
-                return _hasEventsValue? Blend(channelsValue, _eventsValue) : channelsValue;
-            }
+            get => channelsValue;
             set => throw new NotSupportedException();
         }
 
@@ -124,6 +105,48 @@ namespace UnityExtensions
             onChannelsChange?.Invoke();
             parent?.OnChannelsChange();
         }
+
+        /// <summary>
+        /// 判断两个值是否相等
+        /// </summary>
+        public abstract bool Equals(T a, T b);
+
+        /// <summary>
+        /// 混合值
+        /// </summary>
+        public abstract T Blend(T a, T b);
+
+    } // class Blender<T>
+
+
+    /// <summary>
+    /// 混合控制器，用于控制多输入单输出。
+    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
+    /// </summary>
+    public abstract class EventBlender<T> : Blender<T>
+    {
+        // 混合事件
+        private struct Event
+        {
+            public float time01;
+            public T value;
+            public float startDelay;
+            public float duration;
+            public AnimationCurve attenuation;
+
+            public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
+        }
+
+        List<Event> _events;
+        bool _hasEventsValue;
+        T _eventsValue;
+
+        public override T value
+        {
+            get => _hasEventsValue ? Blend(channelsValue, _eventsValue) : channelsValue;
+        }
+
+        public EventBlender(T baseValue) : base(baseValue) { }
 
         /// <summary>
         /// 创建事件
@@ -203,35 +226,19 @@ namespace UnityExtensions
         }
 
         /// <summary>
-        /// 判断两个值是否相等
-        /// </summary>
-        public abstract bool Equals(T a, T b);
-
-        /// <summary>
-        /// 混合值
-        /// </summary>
-        public abstract T Blend(T a, T b);
-
-        /// <summary>
         /// 缩放值
         /// </summary>
         public abstract T Scale(T a, float b);
 
-    } // class Blender<T>
+    } // class EventBlender<T>
 
 
     /// <summary>
     /// 混合控制器，用于控制多输入单输出。
-    /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public abstract class BoolBlender : Blender<bool>
     {
         public BoolBlender(bool baseValue) : base(baseValue) { }
-
-        public sealed override bool Scale(bool a, float b)
-        {
-            return b > 0 && a;
-        }
 
         public sealed override bool Equals(bool a, bool b)
         {
@@ -245,7 +252,7 @@ namespace UnityExtensions
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class FloatBlender : Blender<float>
+    public abstract class FloatBlender : EventBlender<float>
     {
         public FloatBlender(float baseValue) : base(baseValue) { }
 
@@ -275,7 +282,7 @@ namespace UnityExtensions
     /// 混合控制器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
-    public abstract class Vector2Blender : Blender<Vector2>
+    public abstract class Vector2Blender : EventBlender<Vector2>
     {
         public Vector2Blender(Vector2 baseValue) : base(baseValue) { }
      
