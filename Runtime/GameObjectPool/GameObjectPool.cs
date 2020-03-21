@@ -32,6 +32,9 @@ namespace UnityExtensions
             }
         }
 
+        /// <summary>
+        /// SetActive(false) is called.
+        /// </summary>
         public static void Prepare(GameObject template, int quantity)
         {
             if (!_templatePool.TryGetValue(template, out var pool))
@@ -66,6 +69,9 @@ namespace UnityExtensions
             }
         }
 
+        /// <summary>
+        /// SetActive(true) is called.
+        /// </summary>
         public static GameObject Spawn(GameObject template)
         {
             if (!_templatePool.TryGetValue(template, out var pool))
@@ -97,6 +103,9 @@ namespace UnityExtensions
             return instance;
         }
 
+        /// <summary>
+        /// SetActive(false) is called.
+        /// </summary>
         public static void Despawn(GameObject instance)
         {
             var info = _instanceInfo[instance];
@@ -110,6 +119,9 @@ namespace UnityExtensions
             info.pool.Push((instance, info.recyclable));
         }
 
+        /// <summary>
+        /// SetActive(false) is called.
+        /// </summary>
         public static void DespawnAll()
         {
             foreach (var p in _instanceInfo)
@@ -124,11 +136,15 @@ namespace UnityExtensions
             _instanceInfo.Clear();
         }
 
+        /// <summary>
+        /// For active instances, SetActive(false) is called.
+        /// </summary>
         public static void DestroyAll()
         {
-            foreach (var instance in _instanceInfo.Keys)
+            foreach (var p in _instanceInfo)
             {
-                Object.Destroy(instance);
+                p.Value.recyclable.SetActive(false);
+                Object.Destroy(p.Key);
             }
             _instanceInfo.Clear();
 
