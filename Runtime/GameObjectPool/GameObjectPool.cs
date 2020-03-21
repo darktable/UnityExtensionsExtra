@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace UnityExtensions
 {
@@ -79,6 +80,7 @@ namespace UnityExtensions
             if (pool.Count == 0)
             {
                 instance = Object.Instantiate(template, null, false);
+                SceneManager.MoveGameObjectToScene(instance, poolRoot.gameObject.scene);
                 instance.TryGetComponent(out recyclable);
             }
             else
