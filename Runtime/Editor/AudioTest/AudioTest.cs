@@ -37,8 +37,11 @@ namespace UnityExtensions.Editor
         [InitializeOnLoadMethod]
         static void Init()
         {
-            if (instance.enableTest)
-                EditorApplication.hierarchyWindowItemOnGUI += ItemGUI;
+            EditorApplication.delayCall += () =>
+            {
+                if (instance.enableTest)
+                    EditorApplication.hierarchyWindowItemOnGUI += ItemGUI;
+            };
         }
 
         void OnValidate()
@@ -55,9 +58,10 @@ namespace UnityExtensions.Editor
             var go = (GameObject)EditorUtility.InstanceIDToObject(instanceID);
             if (go && go.TryGetComponent(out AudioSource source))
             {
-                using (GUIColorScope.New(new Color(1f, 0.75f, 0f)))
+                bool disabled = !source.isPlaying && (!source.clip || !source.isActiveAndEnabled);
+                using (GUIColorScope.New(disabled ? new Color(0.5f, 0.5f, 0.5f) : new Color(1f, 0.75f, 0f)))
                 {
-                    using (DisabledScope.New(!source.isPlaying && (!source.clip || !source.isActiveAndEnabled)))
+                    using (DisabledScope.New(disabled))
                     {
                         rect.xMin = rect.xMax - rect.height;
                         if (GUI.Button(rect, source.isPlaying ? instance.stopImage : instance.playImage, GUIStyle.none))
