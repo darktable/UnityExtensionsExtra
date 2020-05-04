@@ -42,6 +42,12 @@ namespace UnityExtensions.Editor
                 if (instance.enableTest)
                     EditorApplication.hierarchyWindowItemOnGUI += ItemGUI;
             };
+
+            EditorApplication.update += () =>
+            {
+                if (_lastActiveSource)
+                    EditorApplication.RepaintHierarchyWindow();
+            };
         }
 
         void OnValidate()
@@ -53,21 +59,64 @@ namespace UnityExtensions.Editor
             }
         }
 
+        static AudioSource _lastActiveSource;
+        static bool _mouseDragging;
+
         static void ItemGUI(int instanceID, Rect rect)
         {
             var go = (GameObject)EditorUtility.InstanceIDToObject(instanceID);
             if (go && go.TryGetComponent(out AudioSource source))
             {
                 bool disabled = !source.isPlaying && (!source.clip || !source.isActiveAndEnabled);
-                using (GUIColorScope.New(disabled ? new Color(0.5f, 0.5f, 0.5f) : new Color(1f, 0.75f, 0f)))
+                using (DisabledScope.New(disabled))
                 {
-                    using (DisabledScope.New(disabled))
+                    var buttonRect = rect;
+                    buttonRect.xMin = rect.xMax - rect.height;
+
+                    using (GUIColorScope.New(disabled ? new Color(0.5f, 0.5f, 0.5f) : new Color(1f, 0.75f, 0f)))
                     {
-                        rect.xMin = rect.xMax - rect.height;
-                        if (GUI.Button(rect, source.isPlaying ? instance.stopImage : instance.playImage, GUIStyle.none))
+                        if (GUI.Button(buttonRect, source.isPlaying ? instance.stopImage : instance.playImage, GUIStyle.none))
                         {
                             if (source.isPlaying) source.Stop();
-                            else source.Play();
+                            else
+                            {
+                                source.timeSamples = 0;
+                                source.Play();
+                            }
+                        }
+                    }
+
+                    disabled = disabled || !source.isPlaying;
+
+                    if (!disabled && buttonRect.Contains(Event.current.mousePosition))
+                    {
+                        _lastActiveSource = source;
+                    }
+
+                    // Mouse start drag
+                    if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
+                    {
+                        _mouseDragging = true;
+                    }
+
+                    // Mouse end drag
+                    if (Event.current.rawType == EventType.MouseUp)
+                    {
+                        _mouseDragging = false;
+                    }
+
+                    if (_lastActiveSource == source && (disabled || (!rect.Contains(Event.current.mousePosition) && !_mouseDragging)))
+                    {
+                        _lastActiveSource = null;
+                    }
+
+                    if (_lastActiveSource == source)
+                    {
+                        rect.xMax = buttonRect.xMin - 2;
+                        using (var scope = ChangeCheckScope.New())
+                        {
+                            float newTime01 = EditorGUIUtilities.DragProgress(rect, (float)(source.timeSamples / (double)source.clip.samples), new Color(0, 0, 0, 0.4f), new Color(1, 0.75f, 0), Color.black);
+                            if (scope.changed) source.timeSamples = Mathf.Clamp((int)(newTime01 * (double)source.clip.samples), 0, source.clip.samples-1);
                         }
                     }
                 }
