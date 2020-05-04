@@ -6,6 +6,9 @@ using UnityEditor;
 
 namespace UnityExtensions.Editor
 {
+    /// <summary>
+    /// The ugliest code in the world, but it works
+    /// </summary>
     class AudioTest : ScriptableAssetSingleton<AudioTest>
     {
         [SerializeField, GetSet("enableTest")]
@@ -43,10 +46,21 @@ namespace UnityExtensions.Editor
                     EditorApplication.hierarchyWindowItemOnGUI += ItemGUI;
             };
 
+            float frameCount = 0;
+
             EditorApplication.update += () =>
             {
-                if (_lastActiveSource)
-                    EditorApplication.RepaintHierarchyWindow();
+                frameCount++;
+                if (frameCount > 1f / (EditorUtilities.unscaledDeltaTime * 5f))
+                {
+                    frameCount = 0;
+
+                    if (_lastActiveSource || _mouseInAnyPlayingItem)
+                    {
+                        EditorApplication.RepaintHierarchyWindow();
+                        _mouseInAnyPlayingItem = false;
+                    }
+                }
             };
         }
 
@@ -61,6 +75,7 @@ namespace UnityExtensions.Editor
 
         static AudioSource _lastActiveSource;
         static bool _mouseDragging;
+        static bool _mouseInAnyPlayingItem;
 
         static void ItemGUI(int instanceID, Rect rect)
         {
@@ -86,7 +101,15 @@ namespace UnityExtensions.Editor
                         }
                     }
 
-                    disabled = disabled || !source.isPlaying;
+                    disabled = disabled || !source.isPlaying || source.timeSamples == 0;
+
+                    if (!disabled)
+                    {
+                        var fullRect = rect;
+                        fullRect.xMin -= fullRect.height * 3;
+                        fullRect.xMax += fullRect.height;
+                        if (fullRect.Contains(Event.current.mousePosition)) _mouseInAnyPlayingItem = true;
+                    }
 
                     if (!disabled && buttonRect.Contains(Event.current.mousePosition))
                     {
