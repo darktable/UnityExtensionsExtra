@@ -143,7 +143,8 @@ namespace UnityExtensions
         {
             foreach (var p in _instanceInfo)
             {
-                p.Value.recyclable.SetActive(false);
+                if (p.Value.recyclable == null) p.Key.SetActive(false);
+                else p.Value.recyclable.SetActive(false);
                 Object.Destroy(p.Key);
             }
             _instanceInfo.Clear();
