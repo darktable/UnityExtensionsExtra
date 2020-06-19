@@ -5,19 +5,19 @@ using UnityEngine;
 namespace UnityExtensions
 {
     /// <summary>
-    /// 混合控制器，用于控制多输入单输出。
+    /// 混合器，用于控制多输入单输出。
     /// </summary>
     public abstract class Blender<T> : BaseBlendingChannel<T>
     {
         List<BaseBlendingChannel<T>> _channels;
         T _baseValue;
-        bool _channelsChanged;
-        T _channelsValue;
+        bool _isDirty;
+        T _value;
 
         /// <summary>
         /// 任意通道的新增、删除、修改都会触发
         /// </summary>
-        public event Action onChannelsChange;
+        public event Action onValueChange;
 
         /// <summary>
         /// 通道总数
@@ -32,7 +32,7 @@ namespace UnityExtensions
                 if (!Equals(_baseValue, value))
                 {
                     _baseValue = value;
-                    OnChannelsChange();
+                    SetDirty();
                 }
             }
         }
@@ -40,37 +40,30 @@ namespace UnityExtensions
         /// <summary>
         /// 所有通道混合后的输出值
         /// </summary>
-        public T channelsValue
+        public override T value
         {
             get
             {
-                if (_channelsChanged)
+                if (_isDirty)
                 {
-                    _channelsValue = baseValue;
+                    _value = baseValue;
                     if (!RuntimeUtilities.IsNullOrEmpty(_channels))
                     {
                         for (int i = 0; i < _channels.Count; i++)
-                            _channelsValue = Blend(_channelsValue, _channels[i].value);
+                            _value = Blend(_value, _channels[i].value);
                     }
-                    _channelsChanged = false;
+                    _isDirty = false;
                 }
-                return _channelsValue;
+                return _value;
             }
-        }
-
-        /// <summary>
-        /// Final output
-        /// </summary>
-        public override T value
-        {
-            get => channelsValue;
             set => throw new NotSupportedException();
         }
 
         public Blender(T baseValue)
         {
             _baseValue = baseValue;
-            _channelsValue = baseValue;
+            _isDirty = false;
+            _value = baseValue;
         }
 
         public void AddChannel(BaseBlendingChannel<T> channel)
@@ -84,7 +77,7 @@ namespace UnityExtensions
 
             channel.parent = this;
             _channels.Add(channel);
-            OnChannelsChange();
+            SetDirty();
         }
 
         public void RemoveChannel(BaseBlendingChannel<T> channel)
@@ -96,14 +89,19 @@ namespace UnityExtensions
 
             channel.parent = null;
             _channels.Remove(channel);
-            OnChannelsChange();
+            SetDirty();
         }
 
-        internal void OnChannelsChange()
+        internal void SetDirty()
         {
-            _channelsChanged = true;
-            onChannelsChange?.Invoke();
-            parent?.OnChannelsChange();
+            _isDirty = true;
+            OnValueChange();
+        }
+
+        protected void OnValueChange()
+        {
+            onValueChange?.Invoke();
+            parent?.SetDirty();
         }
 
         /// <summary>
@@ -120,7 +118,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 混合控制器，用于控制多输入单输出。
+    /// 事件混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public abstract class EventBlender<T> : Blender<T>
@@ -143,7 +141,7 @@ namespace UnityExtensions
 
         public override T value
         {
-            get => _hasEventsValue ? Blend(channelsValue, _eventsValue) : channelsValue;
+            get => _hasEventsValue ? Blend(base.value, _eventsValue) : base.value;
         }
 
         public EventBlender(T baseValue) : base(baseValue) { }
@@ -217,12 +215,25 @@ namespace UnityExtensions
                         }
                     }
                 }
-
-                if (!lastHasEventsValue || !_hasEventsValue)
-                {
-                    parent?.OnChannelsChange();
-                }
             }
+
+            if (lastHasEventsValue || _hasEventsValue)
+            {
+                OnValueChange();
+            }
+        }
+
+        /// <summary>
+        /// 清除所有事件
+        /// </summary>
+        public void ClearEvents()
+        {
+            if (_hasEventsValue)
+            {
+                OnValueChange();
+                _hasEventsValue = false;
+            }
+            if (_events != null) _events.Clear();
         }
 
         /// <summary>
@@ -234,7 +245,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 混合控制器，用于控制多输入单输出。
+    /// Bool 混合器，用于控制多输入单输出。
     /// </summary>
     public abstract class BoolBlender : Blender<bool>
     {
@@ -249,7 +260,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 混合控制器，用于控制多输入单输出。
+    /// Float 混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public abstract class FloatBlender : EventBlender<float>
@@ -270,7 +281,7 @@ namespace UnityExtensions
         /// 创建事件
         /// 事件在超过作用时间后自动移除
         /// </summary>
-        public void CreateEvent(FloatBlendingEventPreset preset)
+        public void AddEvent(FloatBlendingEventPreset preset)
         {
             AddEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
@@ -279,7 +290,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 混合控制器，用于控制多输入单输出。
+    /// Vector2 混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public abstract class Vector2Blender : EventBlender<Vector2>
@@ -300,7 +311,7 @@ namespace UnityExtensions
         /// 创建事件
         /// 事件在超过作用时间后自动移除
         /// </summary>
-        public void CreateEvent(Vector2BlendingEventPreset preset)
+        public void AddEvent(Vector2BlendingEventPreset preset)
         {
             AddEvent(preset.startDelay, preset.duration, preset.value, preset.attenuation);
         }
@@ -309,7 +320,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 与混合控制器，用于控制多输入单输出。
+    /// 与混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class BoolAndBlender : BoolBlender
@@ -324,7 +335,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 或混合控制器，用于控制多输入单输出。
+    /// 或混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class BoolOrBlender : BoolBlender
@@ -339,14 +350,14 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 加法混合控制器，用于控制多输入单输出。
+    /// 加法混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class FloatAdditiveBlender : FloatBlender
     {
         public FloatAdditiveBlender(float baseValue = 0f) : base(baseValue) { }
 
-        public float channelsAverageValue => channelsValue / channelCount;
+        public float averageChannelValue => (value - baseValue) / channelCount;
 
         public sealed override float Blend(float a, float b)
         {
@@ -356,7 +367,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 乘法混合控制器，用于控制多输入单输出。
+    /// 乘法混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class FloatMultiplyBlender : FloatBlender
@@ -371,7 +382,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 最大值混合控制器，用于控制多输入单输出。
+    /// 最大值混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class FloatMaximumBlender : FloatBlender
@@ -386,7 +397,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 最小值混合控制器，用于控制多输入单输出。
+    /// 最小值混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class FloatMinimumBlender : FloatBlender
@@ -401,14 +412,14 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 加法混合控制器，用于控制多输入单输出。
+    /// 加法混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class Vector2AdditiveBlender : Vector2Blender
     {
-        public Vector2AdditiveBlender(Vector2 baseValue = new Vector2()) : base(baseValue) { }
+        public Vector2AdditiveBlender(Vector2 baseValue = default) : base(baseValue) { }
 
-        public Vector2 channelsAverageValue => channelsValue / channelCount;
+        public Vector2 averageChannelValue => (value - baseValue) / channelCount;
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -418,7 +429,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 乘法混合控制器，用于控制多输入单输出。
+    /// 乘法混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class Vector2MultiplyBlender : Vector2Blender
@@ -435,7 +446,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 最大值混合控制器，用于控制多输入单输出。
+    /// 最大值混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class Vector2MaximumBlender : Vector2Blender
@@ -450,7 +461,7 @@ namespace UnityExtensions
 
 
     /// <summary>
-    /// 最小值混合控制器，用于控制多输入单输出。
+    /// 最小值混合器，用于控制多输入单输出。
     /// 每一种控制来源可根据使用方式选择使用 Channel 或 Event。
     /// </summary>
     public class Vector2MinimumBlender : Vector2Blender

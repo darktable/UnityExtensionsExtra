@@ -27,7 +27,7 @@ namespace UnityExtensions
                     if (!parent.Equals(_value, value))
                     {
                         _value = value;
-                        parent.OnChannelsChange();
+                        parent.SetDirty();
                     }
                 }
                 else _value = value;
