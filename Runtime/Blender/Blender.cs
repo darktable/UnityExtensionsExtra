@@ -2,6 +2,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 namespace UnityExtensions
 {
     /// <summary>
@@ -66,6 +70,8 @@ namespace UnityExtensions
             _value = baseValue;
         }
 
+        public Blender(string name, T baseValue) : this(baseValue) => this.name = name;
+
         public void AddChannel(BaseBlendingChannel<T> channel)
         {
             if (channel.parent != null)
@@ -114,6 +120,36 @@ namespace UnityExtensions
         /// </summary>
         public abstract T Blend(T a, T b);
 
+        protected override string defaultName => "[Unnamed Blender]";
+
+#if UNITY_EDITOR
+
+        protected bool foldout { get; private set; }
+
+        public override void OnGUILayout()
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            foldout = EditorGUI.Foldout(rect, foldout, GUIContent.none);
+            EditorGUI.LabelField(rect, validName, value.ToString());
+
+            if (foldout)
+            {
+                using (Editor.IndentLevelScope.New())
+                {
+                    EditorGUILayout.LabelField("Base Value", baseValue.ToString());
+                    if (_channels != null)
+                    {
+                        foreach (var c in _channels)
+                        {
+                            c.OnGUILayout();
+                        }
+                    }
+                }
+            }
+        }
+
+#endif
+
     } // class Blender<T>
 
 
@@ -132,7 +168,10 @@ namespace UnityExtensions
             public float duration;
             public AnimationCurve attenuation;
 
-            public float currentScaleFactor => Mathf.Max(attenuation.Evaluate(time01), 0f);
+            public T GetScaledValue(EventBlender<T> blender)
+            {
+                return blender.Scale(value, Mathf.Max(attenuation.Evaluate(time01), 0f));
+            }
         }
 
         List<Event> _events;
@@ -145,6 +184,7 @@ namespace UnityExtensions
         }
 
         public EventBlender(T baseValue) : base(baseValue) { }
+        public EventBlender(string name, T baseValue) : base(name, baseValue) { }
 
         /// <summary>
         /// 创建事件
@@ -206,12 +246,12 @@ namespace UnityExtensions
 
                         if (_hasEventsValue)
                         {
-                            _eventsValue = Blend(_eventsValue, Scale(e.value, e.currentScaleFactor));
+                            _eventsValue = Blend(_eventsValue, e.GetScaledValue(this));
                         }
                         else
                         {
                             _hasEventsValue = true;
-                            _eventsValue = Scale(e.value, e.currentScaleFactor);
+                            _eventsValue = e.GetScaledValue(this);
                         }
                     }
                 }
@@ -241,6 +281,23 @@ namespace UnityExtensions
         /// </summary>
         public abstract T Scale(T a, float b);
 
+#if UNITY_EDITOR
+
+        public override void OnGUILayout()
+        {
+            base.OnGUILayout();
+
+            if (foldout && _hasEventsValue)
+            {
+                using (Editor.IndentLevelScope.New())
+                {
+                    EditorGUILayout.LabelField("Events Value", _eventsValue.ToString());
+                }
+            }
+        }
+
+#endif
+
     } // class EventBlender<T>
 
 
@@ -250,6 +307,7 @@ namespace UnityExtensions
     public abstract class BoolBlender : Blender<bool>
     {
         public BoolBlender(bool baseValue) : base(baseValue) { }
+        public BoolBlender(string name, bool baseValue) : base(name, baseValue) { }
 
         public sealed override bool Equals(bool a, bool b)
         {
@@ -266,6 +324,7 @@ namespace UnityExtensions
     public abstract class FloatBlender : EventBlender<float>
     {
         public FloatBlender(float baseValue) : base(baseValue) { }
+        public FloatBlender(string name, float baseValue) : base(name, baseValue) { }
 
         public sealed override float Scale(float a, float b)
         {
@@ -296,7 +355,8 @@ namespace UnityExtensions
     public abstract class Vector2Blender : EventBlender<Vector2>
     {
         public Vector2Blender(Vector2 baseValue) : base(baseValue) { }
-     
+        public Vector2Blender(string name, Vector2 baseValue) : base(name, baseValue) { }
+
         public sealed override Vector2 Scale(Vector2 a, float b)
         {
             return a * b;
@@ -326,6 +386,7 @@ namespace UnityExtensions
     public class BoolAndBlender : BoolBlender
     {
         public BoolAndBlender(bool baseValue = true) : base(baseValue) { }
+        public BoolAndBlender(string name, bool baseValue = true) : base(name, baseValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -341,6 +402,7 @@ namespace UnityExtensions
     public class BoolOrBlender : BoolBlender
     {
         public BoolOrBlender(bool baseValue = false) : base(baseValue) { }
+        public BoolOrBlender(string name, bool baseValue = false) : base(name, baseValue) { }
 
         public sealed override bool Blend(bool a, bool b)
         {
@@ -356,6 +418,7 @@ namespace UnityExtensions
     public class FloatAdditiveBlender : FloatBlender
     {
         public FloatAdditiveBlender(float baseValue = 0f) : base(baseValue) { }
+        public FloatAdditiveBlender(string name, float baseValue = 0f) : base(name, baseValue) { }
 
         public float averageChannelValue => (value - baseValue) / channelCount;
 
@@ -373,6 +436,7 @@ namespace UnityExtensions
     public class FloatMultiplyBlender : FloatBlender
     {
         public FloatMultiplyBlender(float baseValue = 1f) : base(baseValue) { }
+        public FloatMultiplyBlender(string name, float baseValue = 1f) : base(name, baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -388,6 +452,7 @@ namespace UnityExtensions
     public class FloatMaximumBlender : FloatBlender
     {
         public FloatMaximumBlender(float baseValue) : base(baseValue) { }
+        public FloatMaximumBlender(string name, float baseValue) : base(name, baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -403,6 +468,7 @@ namespace UnityExtensions
     public class FloatMinimumBlender : FloatBlender
     {
         public FloatMinimumBlender(float baseValue) : base(baseValue) { }
+        public FloatMinimumBlender(string name, float baseValue) : base(name, baseValue) { }
 
         public sealed override float Blend(float a, float b)
         {
@@ -418,6 +484,7 @@ namespace UnityExtensions
     public class Vector2AdditiveBlender : Vector2Blender
     {
         public Vector2AdditiveBlender(Vector2 baseValue = default) : base(baseValue) { }
+        public Vector2AdditiveBlender(string name, Vector2 baseValue = default) : base(name, baseValue) { }
 
         public Vector2 averageChannelValue => (value - baseValue) / channelCount;
 
@@ -435,8 +502,9 @@ namespace UnityExtensions
     public class Vector2MultiplyBlender : Vector2Blender
     {
         public Vector2MultiplyBlender(Vector2 baseValue) : base(baseValue) { }
-
+        public Vector2MultiplyBlender(string name, Vector2 baseValue) : base(name, baseValue) { }
         public Vector2MultiplyBlender() : base(new Vector2(1f, 1f)) { }
+        public Vector2MultiplyBlender(string name) : base(name, new Vector2(1f, 1f)) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -452,6 +520,7 @@ namespace UnityExtensions
     public class Vector2MaximumBlender : Vector2Blender
     {
         public Vector2MaximumBlender(Vector2 baseValue) : base(baseValue) { }
+        public Vector2MaximumBlender(string name, Vector2 baseValue) : base(name, baseValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
@@ -467,6 +536,7 @@ namespace UnityExtensions
     public class Vector2MinimumBlender : Vector2Blender
     {
         public Vector2MinimumBlender(Vector2 baseValue) : base(baseValue) { }
+        public Vector2MinimumBlender(string name, Vector2 baseValue) : base(name, baseValue) { }
 
         public sealed override Vector2 Blend(Vector2 a, Vector2 b)
         {
