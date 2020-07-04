@@ -4,19 +4,14 @@ using UnityEngine.SceneManagement;
 
 namespace UnityExtensions
 {
-    using Pool = Stack<(GameObject gameObject, IRecyclable recyclable)>;
-    struct InstanceInfo { public Pool pool; public IRecyclable recyclable; }
-
-    public interface IRecyclable
-    {
-        void SetActive(bool active);
-    }
+    using Pool = Stack<(GameObject gameObject, IDeactivatable deactivatable)>;
+    struct InstanceInfo { public Pool pool; public IDeactivatable deactivatable; }
 
     public struct GameObjectPool
     {
         static Transform _poolRoot;
-        static Dictionary<GameObject, Pool> _templatePool = new Dictionary<GameObject, Pool>(32);
-        static Dictionary<GameObject, InstanceInfo> _instanceInfo = new Dictionary<GameObject, InstanceInfo>(256);
+        static Dictionary<GameObject, Pool> _templateToPool = new Dictionary<GameObject, Pool>(32);
+        static Dictionary<GameObject, InstanceInfo> _instanceToInfo = new Dictionary<GameObject, InstanceInfo>(256);
 
         static Transform poolRoot
         {
@@ -33,26 +28,26 @@ namespace UnityExtensions
         }
 
         /// <summary>
-        /// SetActive(false) is called.
+        /// SetActive(false) or Deactivate() is called.
         /// </summary>
         public static void Prepare(GameObject template, int quantity)
         {
-            if (!_templatePool.TryGetValue(template, out var pool))
+            if (!_templateToPool.TryGetValue(template, out var pool))
             {
                 pool = new Pool(32);
-                _templatePool.Add(template, pool);
+                _templateToPool.Add(template, pool);
             }
 
             while (quantity > 0)
             {
                 var instance = Object.Instantiate(template, null, false);
 
-                if (instance.TryGetComponent(out IRecyclable recyclable)) recyclable.SetActive(false);
+                if (instance.TryGetComponent(out IDeactivatable deactivatable)) deactivatable.Deactivate();
                 else instance.SetActive(false);
 
                 instance.transform.SetParent(poolRoot, false);
 
-                pool.Push((instance, recyclable));
+                pool.Push((instance, deactivatable));
 
                 quantity--;
             }
@@ -60,7 +55,7 @@ namespace UnityExtensions
 
         public static void DestroyUnused(GameObject template)
         {
-            if (_templatePool.TryGetValue(template, out var pool))
+            if (_templateToPool.TryGetValue(template, out var pool))
             {
                 while (pool.Count > 0)
                 {
@@ -69,19 +64,13 @@ namespace UnityExtensions
             }
         }
 
-        /// <summary>
-        /// SetActive(true) is called.
-        /// </summary>
-        public static GameObject Spawn(GameObject template)
+        static void Spawn<TRecyclable>(GameObject template, out GameObject instance, out TRecyclable recyclable) where TRecyclable : IDeactivatable
         {
-            if (!_templatePool.TryGetValue(template, out var pool))
+            if (!_templateToPool.TryGetValue(template, out var pool))
             {
                 pool = new Pool(32);
-                _templatePool.Add(template, pool);
+                _templateToPool.Add(template, pool);
             }
-
-            GameObject instance;
-            IRecyclable recyclable;
 
             if (pool.Count == 0)
             {
@@ -91,72 +80,120 @@ namespace UnityExtensions
             }
             else
             {
-                (instance, recyclable) = pool.Pop();
+                var (gameObject, deactivatable) = pool.Pop();
+                instance = gameObject;
+                recyclable = (TRecyclable)deactivatable;
                 instance.transform.SetParent(null, false);
             }
 
+            _instanceToInfo.Add(instance, new InstanceInfo { pool = pool, deactivatable = recyclable });
+        }
+
+        /// <summary>
+        /// SetActive(true) or Activate() is called.
+        /// </summary>
+        public static GameObject Spawn(GameObject template)
+        {
+            Spawn<IRecyclable>(template, out var instance, out var recyclable);
             if (recyclable == null) instance.SetActive(true);
-            else recyclable.SetActive(true);
-
-            _instanceInfo.Add(instance, new InstanceInfo { pool = pool, recyclable = recyclable });
-
+            else recyclable.Activate();
             return instance;
         }
 
         /// <summary>
-        /// SetActive(false) is called.
+        /// Activate(T) is called.
+        /// </summary>
+        public static GameObject Spawn<T>(GameObject template, T a)
+        {
+            Spawn<IRecyclable<T>>(template, out var instance, out var recyclable);
+            recyclable.Activate(a);
+            return instance;
+        }
+
+        /// <summary>
+        /// Activate(T1, T2) is called.
+        /// </summary>
+        public static GameObject Spawn<T1, T2>(GameObject template, T1 a, T2 b)
+        {
+            Spawn<IRecyclable<T1, T2>>(template, out var instance, out var recyclable);
+            recyclable.Activate(a, b);
+            return instance;
+        }
+
+        /// <summary>
+        /// Activate(T1, T2, T3) is called.
+        /// </summary>
+        public static GameObject Spawn<T1, T2, T3>(GameObject template, T1 a, T2 b, T3 c)
+        {
+            Spawn<IRecyclable<T1, T2, T3>>(template, out var instance, out var recyclable);
+            recyclable.Activate(a, b, c);
+            return instance;
+        }
+
+        /// <summary>
+        /// Activate(T1, T2, T3, T4) is called.
+        /// </summary>
+        public static GameObject Spawn<T1, T2, T3, T4>(GameObject template, T1 a, T2 b, T3 c, T4 d)
+        {
+            Spawn<IRecyclable<T1, T2, T3, T4>>(template, out var instance, out var recyclable);
+            recyclable.Activate(a, b, c, d);
+            return instance;
+        }
+
+        /// <summary>
+        /// SetActive(false) or Deactivate() is called.
         /// </summary>
         public static void Despawn(GameObject instance)
         {
-            var info = _instanceInfo[instance];
-            _instanceInfo.Remove(instance);
+            var info = _instanceToInfo[instance];
+            _instanceToInfo.Remove(instance);
 
-            if (info.recyclable == null) instance.SetActive(false);
-            else info.recyclable.SetActive(false);
+            if (info.deactivatable == null) instance.SetActive(false);
+            else info.deactivatable.Deactivate();
 
             instance.transform.SetParent(poolRoot, false);
 
-            info.pool.Push((instance, info.recyclable));
+            info.pool.Push((instance, info.deactivatable));
         }
 
         /// <summary>
-        /// SetActive(false) is called.
+        /// SetActive(false) or Deactivate() is called.
         /// </summary>
         public static void DespawnAll()
         {
-            foreach (var p in _instanceInfo)
+            foreach (var p in _instanceToInfo)
             {
-                if (p.Value.recyclable == null) p.Key.SetActive(false);
-                else p.Value.recyclable.SetActive(false);
+                if (p.Value.deactivatable == null) p.Key.SetActive(false);
+                else p.Value.deactivatable.Deactivate();
 
                 p.Key.transform.SetParent(poolRoot, false);
 
-                p.Value.pool.Push((p.Key, p.Value.recyclable));
+                p.Value.pool.Push((p.Key, p.Value.deactivatable));
             }
-            _instanceInfo.Clear();
+            _instanceToInfo.Clear();
         }
 
         /// <summary>
-        /// For active instances, SetActive(false) is called.
+        /// For instances in use, SetActive(false) or Deactivate() is called.
         /// </summary>
         public static void DestroyAll()
         {
-            foreach (var p in _instanceInfo)
+            foreach (var p in _instanceToInfo)
             {
-                if (p.Value.recyclable == null) p.Key.SetActive(false);
-                else p.Value.recyclable.SetActive(false);
+                if (p.Value.deactivatable == null) p.Key.SetActive(false);
+                else p.Value.deactivatable.Deactivate();
                 Object.Destroy(p.Key);
             }
-            _instanceInfo.Clear();
+            _instanceToInfo.Clear();
 
-            foreach (var pool in _templatePool.Values)
+            foreach (var pool in _templateToPool.Values)
             {
                 while (pool.Count > 0)
                 {
                     Object.Destroy(pool.Pop().gameObject);
                 }
             }
-            _templatePool.Clear();
+            _templateToPool.Clear();
         }
 
     } // GameObjectPool
