@@ -1,40 +1,45 @@
 ﻿using System;
 using UnityEngine;
-using System.Collections.Generic;
-
-#if UNITY_EDITOR
-using UnityEditor;
-using UnityEditor.IMGUI.Controls;
-using UnityExtensions.Editor;
-#endif
 
 namespace UnityExtensions
 {
     /// <summary>
     /// HierarchialComponent
     /// </summary>
-    public abstract class HierarchialComponent<T> : ScriptableComponent where T : HierarchialComponent<T>
+    [DisallowMultipleComponent]
+    public partial class HierarchialComponent<T> : ScriptableComponent where T : HierarchialComponent<T>
     {
         [SerializeField, HideInInspector] T _parent;
-        [SerializeField, HideInInspector] T _next;
-        [SerializeField, HideInInspector] T _previous;        // the previous of first child references the last child
+        [SerializeField, HideInInspector] T _prevSibling;        // the previous of first child is last child
+        [SerializeField, HideInInspector] T _nextSibling;
         [SerializeField, HideInInspector] T _firstChild;
 
 
         /// <summary>
         /// Parent node, return null if it does not exist.
         /// </summary>
-        public T parent => _parent;
+        public T parent
+        {
+            get => _parent;
+            set
+            {
+                if (value != _parent)
+                {
+                    if (_parent) DetachParent();
+                    if (value) AsLastChild(value);
+                }
+            }
+        }
 
         /// <summary>
         /// Next node in the same hierarchy, return null if this node is the last one.
         /// </summary>
-        public T next => _next;
+        public T nextSibling => _nextSibling;
 
         /// <summary>
         /// Previous node in the same hierarchy, return null if this node is the first one.
         /// </summary>
-        public T previous => (_parent && _parent._firstChild == this) ? null : _previous;
+        public T previousSibling => (_parent && _parent._firstChild == this) ? null : _prevSibling;
 
         /// <summary>
         /// First child node, return null if no child.
@@ -44,22 +49,32 @@ namespace UnityExtensions
         /// <summary>
         /// Last child node, return null if no child.
         /// </summary>
-        public T lastChild => _firstChild?._previous;
+        public T lastChild => _firstChild ? _firstChild._prevSibling : null;
 
         /// <summary>
         /// Is this node a root node?
         /// </summary>
-        public bool isRoot => _parent == null;
+        public bool isRoot => !_parent;
 
         /// <summary>
         /// Is this node a leaf node?
         /// </summary>
-        public bool isLeaf => _firstChild == null;
+        public bool isLeaf => !_firstChild;
 
         /// <summary>
-        /// Number of direct children. Time complexity: O(n) - n is number of direct children.
+        /// Does this node have parent?
         /// </summary>
-        public int directChildCount
+        public bool hasParent => _parent;
+
+        /// <summary>
+        /// Does this node have children?
+        /// </summary>
+        public bool hasChildren => _firstChild;
+
+        /// <summary>
+        /// Number of children. Time complexity: O(n) - n is number of children.
+        /// </summary>
+        public int childCount
         {
             get
             {
@@ -68,7 +83,7 @@ namespace UnityExtensions
                 while (node)
                 {
                     n++;
-                    node = node._next;
+                    node = node._nextSibling;
                 }
                 return n;
             }
@@ -109,113 +124,178 @@ namespace UnityExtensions
         }
 
         /// <summary>
-        /// Get a enumerable instance to foreach all children (include this node).
+        /// Get a enumerable instance to foreach all descendants (include this node).
+        /// Note: can not change the structure of this tree inside the foreach.
+        /// </summary>
+        public DescendantsEnumerable descendants => new DescendantsEnumerable((T)this);
+
+        /// <summary>
+        /// Get a enumerable instance to foreach all ancestors (include this node).
+        /// Note: can not change the structure of this tree inside the foreach.
+        /// </summary>
+        public AncestorsEnumerable ancestors => new AncestorsEnumerable((T)this);
+
+        /// <summary>
+        /// Get a enumerable instance to foreach all children.
         /// Note: can not change the structure of this tree inside the foreach.
         /// </summary>
         public ChildrenEnumerable children => new ChildrenEnumerable((T)this);
 
         /// <summary>
-        /// Get a enumerable instance to foreach all parents (include this node).
-        /// Note: can not change the structure of this tree inside the foreach.
-        /// </summary>
-        public ParentsEnumerable parents => new ParentsEnumerable((T)this);
-
-        /// <summary>
-        /// Get a enumerable instance to foreach all direct children.
-        /// Note: can not change the structure of this tree inside the foreach.
-        /// </summary>
-        public DirectChildrenEnumerable directChildren => new DirectChildrenEnumerable((T)this);
-
-        /// <summary>
         /// Attach to a specified node as the first child.
         /// </summary>
-        public void AttachAsFirst(T parent)
+        public void AsFirstChild(T newParent)
         {
-            InternalValidateAttaching(parent);
+            ValidateNewParent(newParent);
+            if (newParent._firstChild == this) return;
+            DetachParent();
 
-            _parent = parent;
             var self = (T)this;
 
-            if (parent._firstChild)
+            _parent = newParent;
+
+            if (newParent._firstChild)
             {
-                _previous = parent._firstChild._previous;
-                _next = parent._firstChild;
-                parent._firstChild._previous = self;
+                _prevSibling = newParent._firstChild._prevSibling;
+                _nextSibling = newParent._firstChild;
+                newParent._firstChild._prevSibling = self;
+#if UNITY_EDITOR
+                newParent._firstChild.TrackData();
+#endif
             }
-            else
-            {
-                _previous = self;
-            }
+            else _prevSibling = self;
 
-            parent._firstChild = self;
+            newParent._firstChild = self;
 
-//#if UNITY_EDITOR
-
-//            viewItem.depth = depth;
-
-//            parent.viewItem.children.Insert(0, viewItem);
-//            viewItem.
-//#endif
+#if UNITY_EDITOR
+            newParent.SetChildrenItemsDirty();
+            newParent.TrackData();
+            this.TrackData();
+            View.SetDirty();
+#endif
         }
 
         /// <summary>
         /// Attach to a specified node as the last child.
         /// </summary>
-        public void AttachAsLast(T parent)
+        public void AsLastChild(T newParent)
         {
-            InternalValidateAttaching(parent);
+            ValidateNewParent(newParent);
+            if (newParent.lastChild == this) return;
+            DetachParent();
 
-            _parent = parent;
             var self = (T)this;
 
-            if (parent._firstChild)
+            _parent = newParent;
+
+            if (newParent._firstChild)
             {
-                _previous = parent._firstChild._previous;
-                _previous._next = self;
-                parent._firstChild._previous = self;
+                _prevSibling = newParent._firstChild._prevSibling;
+                _prevSibling._nextSibling = self;
+                newParent._firstChild._prevSibling = self;
+#if UNITY_EDITOR
+                _prevSibling.TrackData();
+                newParent._firstChild.TrackData();
+#endif
             }
             else
             {
-                _previous = self;
-                parent._firstChild = self;
+                _prevSibling = self;
+                newParent._firstChild = self;
+#if UNITY_EDITOR
+                newParent.TrackData();
+#endif
             }
+
+#if UNITY_EDITOR
+            newParent.SetChildrenItemsDirty();
+            this.TrackData();
+            View.SetDirty();
+#endif
         }
 
         /// <summary>
-        /// Attach to a specified node before a child of it.
+        /// Attach to a parent before a specified child of it.
         /// </summary>
-        public void AttachBefore(T parent, T next)
+        public void AsSiblingBefore(T newNext)
         {
-            InternalValidateAttaching(parent);
-            parent.InternalValidateChild(next);
+            ValidateNewSibling(newNext);
+            if (this == newNext || this._nextSibling == newNext) return;
 
-            _parent = parent;
+            ValidateNewParent(newNext._parent);
+            DetachParent();
+
             var self = (T)this;
 
-            _previous = next._previous;
-            _next = next;
-            next._previous = self;
+            _parent = newNext._parent;
+            _prevSibling = newNext._prevSibling;
+            _nextSibling = newNext;
 
-            if (parent._firstChild == next)
+            newNext._prevSibling = self;
+
+            if (_parent._firstChild == newNext)
             {
-                parent._firstChild = self;
+                _parent._firstChild = self;
+#if UNITY_EDITOR
+                _parent.TrackData();
+#endif
             }
+            else
+            {
+                _prevSibling._nextSibling = self;
+#if UNITY_EDITOR
+                _prevSibling.TrackData();
+#endif
+            }
+
+#if UNITY_EDITOR
+            _parent.SetChildrenItemsDirty();
+            newNext.TrackData();
+            this.TrackData();
+            View.SetDirty();
+#endif
         }
 
         /// <summary>
-        /// Attach to a specified node after a child of it.
+        /// Attach to a parent after a specified child of it.
         /// </summary>
-        public void AttachAfter(T parent, T previous)
+        public void AsSiblingAfter(T newPrevious)
         {
-            InternalValidateAttaching(parent);
-            parent.InternalValidateChild(previous);
+            ValidateNewSibling(newPrevious);
+            if (this == newPrevious || this.previousSibling == newPrevious) return;
 
-            _parent = parent;
+            ValidateNewParent(newPrevious._parent);
+            DetachParent();
+
             var self = (T)this;
 
-            _previous = previous;
-            _next = previous._next;
-            previous._next = self;
+            _parent = newPrevious._parent;
+            _prevSibling = newPrevious;
+            _nextSibling = newPrevious._nextSibling;
+
+            newPrevious._nextSibling = self;
+
+            if (_nextSibling)
+            {
+                _nextSibling._prevSibling = self;
+#if UNITY_EDITOR
+                _nextSibling.TrackData();
+#endif
+            }
+            else
+            {
+                _parent._firstChild._prevSibling = self;
+#if UNITY_EDITOR
+                _parent._firstChild.TrackData();
+#endif
+            }
+
+#if UNITY_EDITOR
+            _parent.SetChildrenItemsDirty();
+            newPrevious.TrackData();
+            this.TrackData();
+            View.SetDirty();
+#endif
         }
 
         /// <summary>
@@ -225,55 +305,89 @@ namespace UnityExtensions
         {
             if (_parent)
             {
-                if (_parent._firstChild == this)
+#if UNITY_EDITOR
+                _parent.SetChildrenItemsDirty();
+#endif
+
+                if (_nextSibling)
                 {
-                    _parent._firstChild = _next;
+                    _nextSibling._prevSibling = _prevSibling;
+#if UNITY_EDITOR
+                    _nextSibling.TrackData();
+#endif
                 }
                 else
                 {
-                    _previous._next = _next;
+                    _parent._firstChild._prevSibling = _prevSibling;
+#if UNITY_EDITOR
+                    _parent._firstChild.TrackData();
+#endif
                 }
 
-                if (_next) _next._previous = _previous;
+                if (_parent._firstChild == this)
+                {
+                    _parent._firstChild = _nextSibling;
+#if UNITY_EDITOR
+                    _parent.TrackData();
+#endif
+                }
+                else
+                {
+                    _prevSibling._nextSibling = _nextSibling;
+#if UNITY_EDITOR
+                    _prevSibling.TrackData();
+#endif
+                }
 
                 _parent = null;
-                _next = null;
-                _previous = null;
+                _nextSibling = null;
+                _prevSibling = null;
+
+#if UNITY_EDITOR
+                this.TrackData();
+                View.SetDirty();
+#endif
             }
         }
 
         /// <summary>
-        /// Detach from all direct children.
+        /// Detach from all children.
         /// </summary>
         public void DetachChildren()
         {
-            T child;
-
-            child = _firstChild;
+            T child = _firstChild;
             while (child)
             {
                 child._parent = null;
-                child._next = null;
-                child._previous = null;
-
-                child = child._next;
+                child._nextSibling = null;
+                child._prevSibling = null;
+#if UNITY_EDITOR
+                child.TrackData();
+#endif
+                child = child._nextSibling;
             }
 
             _firstChild = null;
+
+#if UNITY_EDITOR
+            this.SetChildrenItemsDirty();
+            this.TrackData();
+            View.SetDirty();
+#endif
         }
 
         /// <summary>
-        /// Is this node a child of a specified node?
+        /// Is this node a descendant of a specified node?
         /// </summary>
-        public bool IsChildOf(T parent)
+        public bool IsDescendantOf(T root)
         {
-            if (!parent)
+            if (!root)
             {
-                throw new ArgumentNullException("parent");
+                throw new ArgumentNullException("root is null");
             }
 
             var node = this;
-            while (node != parent)
+            while (node != root)
             {
                 node = node._parent;
                 if (!node) return false;
@@ -282,35 +396,31 @@ namespace UnityExtensions
         }
 
 
-        #region Internal
+        #region Internal Validate
 
-        void InternalValidateAttaching(T parent)
+        void ValidateNewParent(T newParent)
         {
-            if (_parent)
+            if (!newParent)
             {
-                DetachParent();
-            }
-            if (!parent)
-            {
-                throw new ArgumentNullException("parent");
+                throw new ArgumentNullException("new parent is null");
             }
 #if DEBUG
-            if (parent.IsChildOf((T)this))
+            if (newParent.IsDescendantOf((T)this))
             {
-                throw new InvalidOperationException("new parent is a child of this node");
+                throw new InvalidOperationException("new parent is a descendant of this node");
             }
 #endif
         }
 
-        void InternalValidateChild(T node)
+        static void ValidateNewSibling(T newSibling)
         {
-            if (!node)
+            if (!newSibling)
             {
-                throw new ArgumentNullException("node");
+                throw new ArgumentNullException("new sibling is null");
             }
-            if (node._parent != this)
+            if (!newSibling._parent)
             {
-                throw new InvalidOperationException("node is not a child of parent");
+                throw new InvalidOperationException("new sibling has no parent");
             }
         }
 
@@ -319,26 +429,26 @@ namespace UnityExtensions
 
         #region Enumerable & Enumerator
 
-        public struct ChildrenEnumerable
+        public struct DescendantsEnumerable
         {
             T _node;
 
-            internal ChildrenEnumerable(T node)
+            internal DescendantsEnumerable(T node)
             {
                 _node = node;
             }
 
-            public ChildrenEnumerator GetEnumerator()
+            public DescendantsEnumerator GetEnumerator()
             {
-                return new ChildrenEnumerator(_node);
+                return new DescendantsEnumerator(_node);
             }
         }
 
-        public struct ChildrenEnumerator
+        public struct DescendantsEnumerator
         {
             T _root;
 
-            internal ChildrenEnumerator(T node)
+            internal DescendantsEnumerator(T node)
             {
                 _root = node;
                 Current = null;
@@ -359,9 +469,9 @@ namespace UnityExtensions
                     {
                         while (Current != _root)
                         {
-                            if (Current.next)
+                            if (Current.nextSibling)
                             {
-                                Current = Current._next;
+                                Current = Current._nextSibling;
                                 return true;
                             }
                             else
@@ -386,26 +496,26 @@ namespace UnityExtensions
             }
         }
 
-        public struct ParentsEnumerable
+        public struct AncestorsEnumerable
         {
             T _node;
 
-            internal ParentsEnumerable(T node)
+            internal AncestorsEnumerable(T node)
             {
                 _node = node;
             }
 
-            public ParentsEnumerator GetEnumerator()
+            public AncestorsEnumerator GetEnumerator()
             {
-                return new ParentsEnumerator(_node);
+                return new AncestorsEnumerator(_node);
             }
         }
 
-        public struct ParentsEnumerator
+        public struct AncestorsEnumerator
         {
             T _node;
 
-            internal ParentsEnumerator(T node)
+            internal AncestorsEnumerator(T node)
             {
                 _node = node;
                 Current = null;
@@ -433,26 +543,26 @@ namespace UnityExtensions
             }
         }
 
-        public struct DirectChildrenEnumerable
+        public struct ChildrenEnumerable
         {
             T _node;
 
-            internal DirectChildrenEnumerable(T node)
+            internal ChildrenEnumerable(T node)
             {
                 _node = node;
             }
 
-            public DirectChildrenEnumerator GetEnumerator()
+            public ChildrenEnumerator GetEnumerator()
             {
-                return new DirectChildrenEnumerator(_node);
+                return new ChildrenEnumerator(_node);
             }
         }
 
-        public struct DirectChildrenEnumerator
+        public struct ChildrenEnumerator
         {
             T _node;
 
-            internal DirectChildrenEnumerator(T node)
+            internal ChildrenEnumerator(T node)
             {
                 _node = node;
                 Current = null;
@@ -464,7 +574,7 @@ namespace UnityExtensions
             {
                 if (Current)
                 {
-                    Current = Current.next;
+                    Current = Current.nextSibling;
                 }
                 else
                 {
@@ -481,64 +591,6 @@ namespace UnityExtensions
         }
 
         #endregion
-
-
-#if UNITY_EDITOR
-
-        TreeViewState _viewState = new TreeViewState();
-
-        ViewItem _viewItem;
-        //ViewItem viewItem => _viewItem ??= new ViewItem((T)this);
-
-        protected class ViewItem : TreeViewItem
-        {
-            //T _target;
-
-            //public ViewItem(T target) : base(target.GetInstanceID())
-            //{
-            //    _target = target;
-            //}
-
-            //public override string displayName { get => _target.name; set => _target.name = value; }
-
-            //public override TreeViewItem parent
-            //{
-            //    get => _target.parent ? _target.parent.viewItem : null;
-            //    set
-            //    {
-            //        if (value == null) _target.DetachParent();
-            //        else _target.AttachAsLast(((ViewItem)value)._target);
-            //    }
-            //}
-        }
-
-        //[CustomEditor(typeof(T), true)]
-        //protected class Editor : BaseEditor<T>
-        //{
-        //    protected class View : TreeView
-        //    {
-        //        T _root;
-
-        //        public View(T root) : base(root._viewState)
-        //        {
-        //            _root = root;
-        //        }
-
-        //        protected override TreeViewItem BuildRoot()
-        //        {
-                    
-        //        }
-        //    }
-
-
-        //    public override void OnInspectorGUI()
-        //    {
-        //        base.OnInspectorGUI();
-        //        TreeView
-        //    }
-        //}
-
-#endif
 
     } // class HierarchialComponent<T>
 
