@@ -5,7 +5,7 @@ namespace UnityExtensions
     [AddComponentMenu("Miscellaneous/Platform Excluder")]
     public class PlatformExcluder : ScriptableComponent
     {
-        [SerializeField, Flags]
+        [SerializeField]
         PlatformMask _includedPlatforms = default;
 
 
