@@ -158,43 +158,45 @@ namespace UnityExtensions
 
         /// <summary>
         /// SetActive(false) or Deactivate() is called.
+        /// NOTE: This method will ignore adding active instances in custom Deactivate.
         /// </summary>
         public static void DespawnAll()
         {
-            foreach (var p in _instanceToInfo)
-            {
-                if (p.Value.deactivatable == null) p.Key.SetActive(false);
-                else p.Value.deactivatable.Deactivate();
-
-                p.Key.transform.SetParent(poolRoot, false);
-
-                p.Value.pool.Push((p.Key, p.Value.deactivatable));
-            }
-            _instanceToInfo.Clear();
-        }
-
-        /// <summary>
-        /// For instances in use, SetActive(false) or Deactivate() is called.
-        /// </summary>
-        public static void DestroyAll()
-        {
-            using (var temp = PoolSingleton<List<GameObject>>.instance.GetTemp())
+            using (var temp = PoolSingleton<List<(GameObject, InstanceInfo)>>.instance.GetTemp())
             {
                 temp.item.Clear();
 
                 foreach (var p in _instanceToInfo)
                 {
-                    if (p.Value.deactivatable == null) p.Key.SetActive(false);
-                    else p.Value.deactivatable.Deactivate();
-                    temp.item.Add(p.Key);
+                    temp.item.Add((p.Key, p.Value));
                 }
 
-                foreach (var go in temp.item)
-                    Object.Destroy(go);
+                foreach (var p in temp.item)
+                {
+                    if (_instanceToInfo.ContainsKey(p.Item1))
+                    {
+                        _instanceToInfo.Remove(p.Item1);
+
+                        if (p.Item2.deactivatable == null) p.Item1.SetActive(false);
+                        else p.Item2.deactivatable.Deactivate();
+
+                        p.Item1.transform.SetParent(poolRoot, false);
+
+                        p.Item2.pool.Push((p.Item1, p.Item2.deactivatable));
+                    }
+                }
 
                 temp.item.Clear();
             }
-            _instanceToInfo.Clear();
+        }
+
+        /// <summary>
+        /// For instances in use, SetActive(false) or Deactivate() is called.
+        /// NOTE: This method will ignore the adding active instances in custom Deactivate.
+        /// </summary>
+        public static void DestroyAll()
+        {
+            DespawnAll();
 
             foreach (var pool in _templateToPool.Values)
             {
@@ -203,7 +205,6 @@ namespace UnityExtensions
                     Object.Destroy(pool.Pop().gameObject);
                 }
             }
-            _templateToPool.Clear();
         }
 
     } // GameObjectPool
