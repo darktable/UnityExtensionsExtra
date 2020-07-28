@@ -178,11 +178,21 @@ namespace UnityExtensions
         /// </summary>
         public static void DestroyAll()
         {
-            foreach (var p in _instanceToInfo)
+            using (var temp = PoolSingleton<List<GameObject>>.instance.GetTemp())
             {
-                if (p.Value.deactivatable == null) p.Key.SetActive(false);
-                else p.Value.deactivatable.Deactivate();
-                Object.Destroy(p.Key);
+                temp.item.Clear();
+
+                foreach (var p in _instanceToInfo)
+                {
+                    if (p.Value.deactivatable == null) p.Key.SetActive(false);
+                    else p.Value.deactivatable.Deactivate();
+                    temp.item.Add(p.Key);
+                }
+
+                foreach (var go in temp.item)
+                    Object.Destroy(go);
+
+                temp.item.Clear();
             }
             _instanceToInfo.Clear();
 
