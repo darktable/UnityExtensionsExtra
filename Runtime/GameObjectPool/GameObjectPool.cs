@@ -7,7 +7,7 @@ namespace UnityExtensions
     using Pool = Stack<(GameObject gameObject, IDeactivatable deactivatable)>;
     struct InstanceInfo { public Pool pool; public IDeactivatable deactivatable; }
 
-    public struct GameObjectPool
+    public static class GameObjectPool
     {
         static Transform _poolRoot;
         static Dictionary<GameObject, Pool> _templateToPool = new Dictionary<GameObject, Pool>(32);
@@ -30,7 +30,7 @@ namespace UnityExtensions
         /// <summary>
         /// SetActive(false) or Deactivate() is called.
         /// </summary>
-        public static void Prepare(GameObject template, int quantity)
+        public static void SpawnBackups(GameObject template, int quantity)
         {
             if (!_templateToPool.TryGetValue(template, out var pool))
             {
@@ -53,7 +53,7 @@ namespace UnityExtensions
             }
         }
 
-        public static void DestroyUnused(GameObject template)
+        public static void DestroyBackups(GameObject template)
         {
             if (_templateToPool.TryGetValue(template, out var pool))
             {

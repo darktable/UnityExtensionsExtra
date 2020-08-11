@@ -13,33 +13,33 @@ namespace UnityExtensions
             public int quantity;
         }
 
-        [SerializeField] bool _prepareOnAwake = false;
-        [SerializeField] bool _destroyUnusedOnDestroy = false;
+        [SerializeField] bool _spawnBackupsOnAwake = false;
+        [SerializeField] bool _destroyBackupsOnDestroy = false;
         [SerializeField] Settings[] _settings = default;
 
         void Awake()
         {
-            if (_prepareOnAwake) Prepare();
+            if (_spawnBackupsOnAwake) SpawnBackups();
         }
         
         void OnDestroy()
         {
-            if (_destroyUnusedOnDestroy) DestroyUnused();
+            if (_destroyBackupsOnDestroy) DestroyBackups();
         }
 
-        public void Prepare()
+        public void SpawnBackups()
         {
             foreach (var s in _settings)
             {
-                GameObjectPool.Prepare(s.template, s.quantity);
+                GameObjectPool.SpawnBackups(s.template, s.quantity);
             }
         }
 
-        public void DestroyUnused()
+        public void DestroyBackups()
         {
             foreach (var s in _settings)
             {
-                GameObjectPool.DestroyUnused(s.template);
+                GameObjectPool.DestroyBackups(s.template);
             }
         }
 
