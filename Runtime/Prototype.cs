@@ -24,7 +24,7 @@ namespace UnityExtensions
 
     public class Prototype : ScriptableAsset
     {
-        [SerializeField, Disable] internal Prototype _parent;
+        [SerializeField, HideInInspector] internal Prototype _parent;
         [SerializeField, HideInInspector] Prototype[] _subPrototypes;
 
 #if UNITY_EDITOR
@@ -38,6 +38,8 @@ namespace UnityExtensions
             static Dictionary<Type, List<Type>> _subPrototypeTypes = new Dictionary<Type, List<Type>>();
             ReorderableList _list;
             new Prototype target => (Prototype)base.target;
+
+            static Stack<Prototype> _parents = new Stack<Prototype>();
 
             List<Type> GetSubPrototypeTypeList()
             {
@@ -94,9 +96,8 @@ namespace UnityExtensions
 
                 using (var scope = ChangeCheckScope.New(item))
                 {
-                    EditorStyles.label.CalcMinMaxWidth(EditorGUIUtilities.TempContent(item.name), out _, out var width);
-                    rect.width = width;
-                    var newName = EditorGUI.DelayedTextField(rect, item.name, EditorStyles.label);
+                    rect.width = EditorStyles.label.CalcSize(EditorGUIUtilities.TempContent(item.name)).x;
+                    var newName = EditorGUI.TextField(rect, item.name, EditorStyles.label);
                     if (!string.IsNullOrWhiteSpace(newName) && scope.changed)
                     {
                         item.name = newName;
@@ -175,36 +176,82 @@ namespace UnityExtensions
                 EditorUtility.SetDirty(target);
             }
 
-            public override void OnInspectorGUI()
+            void OnSelfInspectorGUI()
             {
                 EditorGUILayout.Space();
 
                 var size = EditorStyles.boldLabel.CalcSize(EditorGUIUtilities.TempContent(target.name));
                 var rect = EditorGUILayout.GetControlRect(false, size.y);
-                EditorGUI.LabelField(rect, target.name, EditorStyles.boldLabel);
+                var rect2 = rect;
 
-                rect.y = rect.center.y;
-                rect.height = 2f;
-                rect.xMin += size.x + 4;
-                if (rect.width > 0f) EditorGUI.DrawRect(rect, EditorGUIUtilities.labelNormalColor);
+                using (var scope = ChangeCheckScope.New(target))
+                {
+                    rect.width = size.x;
+                    var newName = EditorGUI.TextField(rect, target.name, EditorStyles.boldLabel);
+                    if (!string.IsNullOrWhiteSpace(newName) && scope.changed)
+                    {
+                        target.name = newName;
+                        EditorUtility.SetDirty(target);
+
+                        AssetDatabase.SaveAssets();
+                        AssetDatabase.Refresh();
+                    }
+                }
+
+                rect2.y = rect2.center.y - 1;
+                rect2.height = 2f;
+                rect2.xMin += size.x + 5;
+                if (rect2.width > 0f) EditorGUI.DrawRect(rect2, EditorGUIUtilities.labelNormalColor);
 
                 EditorGUILayout.Space();
 
                 target.OnInspectorGUI(this);
+            }
 
-                EditorGUILayout.Space();
-
-                if (_list.list != target._subPrototypes) _list.list = target._subPrototypes;
-                if (_list.index >= _list.list.Count) _list.index = -1;
-
-                _list.DoLayoutList();
-
-                if (_list.index >= 0 && _list.index < _list.count)
+            public void OnInspectorGUI(bool showParents, bool showSubPrototypes)
+            {
+                if (showParents)
                 {
-                    var selection = (Prototype)_list.list[_list.index];
-                    CreateCachedEditor(selection, null, ref selection._cachedEditor);
-                    selection._cachedEditor.OnInspectorGUI();
+                    _parents.Clear();
+                    var root = target._parent;
+                    while (root)
+                    {
+                        _parents.Push(root);
+                        root = root._parent;
+                    }
+
+                    foreach (var p in _parents)
+                    {
+                        CreateCachedEditor(p, null, ref p._cachedEditor);
+                        ((PrototypeEditor)p._cachedEditor).OnSelfInspectorGUI();
+                    }
+
+                    _parents.Clear();
                 }
+
+                OnSelfInspectorGUI();
+
+                if (showSubPrototypes)
+                {
+                    EditorGUILayout.Space();
+
+                    if (_list.list != target._subPrototypes) _list.list = target._subPrototypes;
+                    if (_list.index >= _list.list.Count) _list.index = -1;
+
+                    _list.DoLayoutList();
+
+                    if (_list.index >= 0 && _list.index < _list.count)
+                    {
+                        var selection = (Prototype)_list.list[_list.index];
+                        CreateCachedEditor(selection, null, ref selection._cachedEditor);
+                        ((PrototypeEditor)selection._cachedEditor).OnInspectorGUI(false, true);
+                    }
+                }
+            }
+
+            public override void OnInspectorGUI()
+            {
+                OnInspectorGUI(true, true);
             }
         }
 
