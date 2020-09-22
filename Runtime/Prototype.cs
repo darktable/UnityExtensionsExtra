@@ -4,119 +4,64 @@ using System.Collections.Generic;
 
 #if UNITY_EDITOR
 using UnityEditor;
-using UnityEditorInternal;
 using UnityExtensions.Editor;
 #endif
 
 namespace UnityExtensions
 {
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    public sealed class PrototypeAttribute : Attribute
-    {
-        public readonly Type parentType;
-
-        public PrototypeAttribute(Type parentType)
-        {
-            this.parentType = parentType;
-        }
-    }
-
-
     public class Prototype : ScriptableAsset
     {
-        [SerializeField, HideInInspector] internal Prototype _parent;
-        [SerializeField, HideInInspector] Prototype[] _subPrototypes;
+        [SerializeField, HideInInspector] int _subCount;
 
 #if UNITY_EDITOR
 
+        static Dictionary<Type, List<Type>> _subTypes = new Dictionary<Type, List<Type>>();
         UnityEditor.Editor _cachedEditor;
+
+        List<Type> GetSubTypes()
+        {
+            var thisType = GetType();
+
+            if (!_subTypes.TryGetValue(thisType, out var list))
+            {
+                var types = TypeCache.GetTypesDerivedFrom(typeof(ISubPrototype));
+                foreach (var t in types)
+                {
+                    if (!t.IsAbstract && !t.IsGenericType)
+                    {
+                        var type = t;
+                        while (type != typeof(Prototype))
+                        {
+                            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SubPrototype<>))
+                            {
+                                if (type.GetGenericArguments()[0] == thisType)
+                                {
+                                    if (list == null) list = new List<Type>();
+                                    list.Add(t);
+                                }
+                                break;
+                            }
+                            type = type.BaseType;
+                        }
+                    }
+                }
+
+                _subTypes.Add(thisType, list);
+            }
+
+            return list;
+        }
+
 
         [CustomEditor(typeof(Prototype), true)]
         [CanEditMultipleObjects]
         public class PrototypeEditor : ScriptableEditor
         {
-            static Dictionary<Type, List<Type>> _subPrototypeTypes = new Dictionary<Type, List<Type>>();
-            ReorderableList _list;
             new Prototype target => (Prototype)base.target;
 
-            static Stack<Prototype> _parents = new Stack<Prototype>();
-
-            List<Type> GetSubPrototypeTypeList()
+            void ShowAddMenu(Rect buttonRect)
             {
-                var targetType = target.GetType();
-
-                if (!_subPrototypeTypes.TryGetValue(targetType, out var list))
-                {
-                    var types = TypeCache.GetTypesWithAttribute<PrototypeAttribute>();
-                    foreach (var t in types)
-                    {
-                        if (!t.IsAbstract && t.IsSubclassOf(typeof(Prototype)))
-                        {
-                            var attribute = (PrototypeAttribute)t.GetCustomAttributes(typeof(PrototypeAttribute), false)[0];
-                            if (attribute.parentType.IsAssignableFrom(targetType))
-                            {
-                                if (list == null) list = new List<Type>();
-                                list.Add(t);
-                            }
-                        }
-                    }
-                    _subPrototypeTypes.Add(targetType, list);
-                }
-                return list;
-            }
-
-            void OnEnable()
-            {
-                if (target._subPrototypes == null) target._subPrototypes = new Prototype[0];
-                _list = new ReorderableList(target._subPrototypes, typeof(Prototype), true, true, true, true);
-
-                _list.drawHeaderCallback = DrawHeaderCallback;
-                _list.drawElementBackgroundCallback = DrawElementBackgroundCallback;
-                _list.drawElementCallback = DrawElementCallback;
-                _list.onCanAddCallback = OnCanAddCallback;
-                _list.onAddDropdownCallback = OnAddDropdownCallback;
-                _list.onCanRemoveCallback = OnCanRemoveCallback;
-                _list.onRemoveCallback = OnRemoveCallback;
-                _list.onReorderCallback = OnReorderCallback;
-            }
-
-            void DrawHeaderCallback(Rect rect)
-            {
-                EditorGUI.LabelField(rect, "Sub-Prototypes", EditorStyles.miniLabel);
-            }
-
-            void DrawElementBackgroundCallback(Rect rect, int index, bool isActive, bool isFocused)
-            {
-                if (isActive) EditorGUI.DrawRect(rect, new Color(0.1f, 0.5f, 1f, 0.75f));
-            }
-
-            void DrawElementCallback(Rect rect, int index, bool isActive, bool isFocused)
-            {
-                var item = (Prototype)_list.list[index];
-
-                using (var scope = ChangeCheckScope.New(item))
-                {
-                    rect.width = EditorStyles.label.CalcSize(EditorGUIUtilities.TempContent(item.name)).x;
-                    var newName = EditorGUI.TextField(rect, item.name, EditorStyles.label);
-                    if (!string.IsNullOrWhiteSpace(newName) && scope.changed)
-                    {
-                        item.name = newName;
-                        EditorUtility.SetDirty(item);
-                        
-                        AssetDatabase.SaveAssets();
-                        AssetDatabase.Refresh();
-                    }
-                }
-            }
-
-            bool OnCanAddCallback(ReorderableList list)
-            {
-                return GetSubPrototypeTypeList() != null;
-            }
-
-            void OnAddDropdownCallback(Rect buttonRect, ReorderableList list)
-            {
-                var types = GetSubPrototypeTypeList();
+                var types = target.GetSubTypes();
                 GenericMenu menu = new GenericMenu();
 
                 foreach (var t in types)
@@ -130,128 +75,122 @@ namespace UnityExtensions
             void OnAddCallback(object data)
             {
                 var instance = (Prototype)CreateInstance((Type)data);
-                instance.name = $"New {data}";
-                instance._parent = target;
+                instance.name = ((Type)data).Name;
+                ((ISubPrototype)instance).super = target;
+
+                Undo.RegisterCreatedObjectUndo(instance, "Add Sub-Prototype");
 
                 AssetDatabase.AddObjectToAsset(instance, target);
-                Undo.RegisterCreatedObjectUndo(instance, instance.name);
 
-                Undo.RecordObject(target, target.name);
-                ArrayUtility.Add(ref target._subPrototypes, instance);
+                Undo.RecordObject(target, "Add Sub-Prototype");
+                target._subCount++;
 
                 EditorUtility.SetDirty(target);
-                EditorUtility.SetDirty(instance);
-
-                _list.list = target._subPrototypes;
-                _list.index = _list.list.Count - 1;
-
                 AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
+
+                Selection.activeObject = instance;
             }
 
-            bool OnCanRemoveCallback(ReorderableList list)
+            void Remove()
             {
-                return list.index >= 0 && RuntimeUtilities.IsNullOrEmpty(((Prototype)list.list[list.index])._subPrototypes);
-            }
+                if (target is ISubPrototype s)
+                {
+                    var super = s.super;
+                    Undo.RecordObject(super, "Delete SubPrototype");
 
-            void OnRemoveCallback(ReorderableList list)
-            {
-                Undo.RecordObject(target, target.name);
+                    super._subCount--;
 
-                ArrayUtility.RemoveAt(ref target._subPrototypes, list.index);
+                    Undo.DestroyObjectImmediate(target);
 
-                Undo.DestroyObjectImmediate((Prototype)list.list[list.index]);
+                    EditorUtility.SetDirty(super);
+                    AssetDatabase.SaveAssets();
 
-                EditorUtility.SetDirty(target);
-
-                _list.list = target._subPrototypes;
-                _list.index--;
-
-                AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
-            }
-
-            void OnReorderCallback(ReorderableList list)
-            {
-                EditorUtility.SetDirty(target);
+                    Selection.activeObject = super;
+                }
             }
 
             void OnSelfInspectorGUI()
             {
                 EditorGUILayout.Space();
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-                var size = EditorStyles.boldLabel.CalcSize(EditorGUIUtilities.TempContent(target.name));
-                var rect = EditorGUILayout.GetControlRect(false, size.y);
-                var rect2 = rect;
+                var rect = EditorGUILayout.GetControlRect();
+                rect.width -= rect.height + 5;
 
-                using (var scope = ChangeCheckScope.New(target))
+                using (var scope = ChangeCheckScope.New())
                 {
-                    rect.width = size.x;
-                    var newName = EditorGUI.TextField(rect, target.name, EditorStyles.boldLabel);
-                    if (!string.IsNullOrWhiteSpace(newName) && scope.changed)
+                    var newName = EditorGUI.DelayedTextField(rect, target.name, EditorStyles.boldLabel);
+                    if (scope.changed && !string.IsNullOrWhiteSpace(newName))
                     {
-                        target.name = newName;
-                        EditorUtility.SetDirty(target);
+                        if (target is ISubPrototype)
+                        {
+                            target.name = newName;
 
-                        AssetDatabase.SaveAssets();
-                        AssetDatabase.Refresh();
+                            EditorUtility.SetDirty(target);
+                            AssetDatabase.SaveAssets();
+                        }
+                        else
+                        {
+                            AssetDatabase.RenameAsset(AssetDatabase.GetAssetPath(target), newName);
+                        }
                     }
                 }
 
-                rect2.y = rect2.center.y - 1;
-                rect2.height = 2f;
-                rect2.xMin += size.x + 5;
-                if (rect2.width > 0f) EditorGUI.DrawRect(rect2, EditorGUIUtilities.labelNormalColor);
+                rect.x = rect.xMax + 5;
+                rect.width = rect.height;
 
-                EditorGUILayout.Space();
-
-                target.OnInspectorGUI(this);
-            }
-
-            public void OnInspectorGUI(bool showParents, bool showSubPrototypes)
-            {
-                if (showParents)
+                if (target._subCount > 0 || !(target is ISubPrototype))
                 {
-                    _parents.Clear();
-                    var root = target._parent;
-                    while (root)
-                    {
-                        _parents.Push(root);
-                        root = root._parent;
-                    }
-
-                    foreach (var p in _parents)
-                    {
-                        CreateCachedEditor(p, null, ref p._cachedEditor);
-                        ((PrototypeEditor)p._cachedEditor).OnSelfInspectorGUI();
-                    }
-
-                    _parents.Clear();
+                    GUI.Label(rect, target._subCount.ToString(), EditorStyles.centeredGreyMiniLabel);
+                }
+                else if (GUI.Button(rect, "X", EditorStyles.centeredGreyMiniLabel))
+                {
+                    Remove();
                 }
 
-                OnSelfInspectorGUI();
+                EditorGUILayout.EndVertical();
 
-                if (showSubPrototypes)
-                {
-                    EditorGUILayout.Space();
-
-                    if (_list.list != target._subPrototypes) _list.list = target._subPrototypes;
-                    if (_list.index >= _list.list.Count) _list.index = -1;
-
-                    _list.DoLayoutList();
-
-                    if (_list.index >= 0 && _list.index < _list.count)
-                    {
-                        var selection = (Prototype)_list.list[_list.index];
-                        CreateCachedEditor(selection, null, ref selection._cachedEditor);
-                        ((PrototypeEditor)selection._cachedEditor).OnInspectorGUI(false, true);
-                    }
-                }
+                if (target) target.OnInspectorGUI(this);
             }
 
             public override void OnInspectorGUI()
             {
-                OnInspectorGUI(true, true);
+                if (target is ISubPrototype s)
+                {
+                    using (var supers = PoolSingleton<Stack<Prototype>>.instance.GetTemp())
+                    {
+                        supers.item.Clear();
+
+                        while (s.super)
+                        {
+                            supers.item.Push(s.super);
+
+                            if (s.super is ISubPrototype i) s = i;
+                            else break;
+                        }
+
+                        foreach (var i in supers.item)
+                        {
+                            CreateCachedEditor(i, null, ref i._cachedEditor);
+                            ((PrototypeEditor)i._cachedEditor).OnSelfInspectorGUI();
+                        }
+
+                        supers.item.Clear();
+                    }
+                }
+
+                OnSelfInspectorGUI();
+
+                if (target.GetSubTypes() != null)
+                {
+                    var rect = EditorGUILayout.GetControlRect(true);
+                    rect.xMin += EditorGUIUtility.labelWidth;
+
+                    if (GUI.Button(rect, "Add Sub-Prototype", EditorStyles.miniButton))
+                    {
+                        ShowAddMenu(rect);
+                    }
+                }
             }
         }
 
@@ -259,8 +198,18 @@ namespace UnityExtensions
     }
 
 
-    public class Prototype<TParent> : Prototype where TParent : Prototype
+    internal interface ISubPrototype
     {
-        public TParent parent => (TParent)_parent;
+        Prototype super { get; set; }
+    }
+
+
+    public class SubPrototype<SuperPrototype> : Prototype, ISubPrototype where SuperPrototype : Prototype
+    {
+        [SerializeField, HideInInspector] SuperPrototype _super;
+
+        public SuperPrototype super => _super;
+
+        Prototype ISubPrototype.super { get => _super; set => _super = (SuperPrototype)value; }
     }
 }
