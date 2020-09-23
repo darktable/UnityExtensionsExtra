@@ -80,12 +80,13 @@ namespace UnityExtensions
 
                 Undo.RegisterCreatedObjectUndo(instance, "Add Sub-Prototype");
 
-                AssetDatabase.AddObjectToAsset(instance, target);
+                var root = (target is ISubPrototype s) ? s.root : target;
+                AssetDatabase.AddObjectToAsset(instance, root);
 
                 Undo.RecordObject(target, "Add Sub-Prototype");
                 target._subCount++;
 
-                EditorUtility.SetDirty(target);
+                EditorUtility.SetDirty(root);
                 AssetDatabase.SaveAssets();
 
                 Selection.activeObject = instance;
@@ -102,7 +103,7 @@ namespace UnityExtensions
 
                     Undo.DestroyObjectImmediate(target);
 
-                    EditorUtility.SetDirty(super);
+                    EditorUtility.SetDirty(s.root);
                     AssetDatabase.SaveAssets();
 
                     Selection.activeObject = super;
@@ -122,11 +123,11 @@ namespace UnityExtensions
                     var newName = EditorGUI.DelayedTextField(rect, target.name, EditorStyles.boldLabel);
                     if (scope.changed && !string.IsNullOrWhiteSpace(newName))
                     {
-                        if (target is ISubPrototype)
+                        if (target is ISubPrototype s)
                         {
                             target.name = newName;
 
-                            EditorUtility.SetDirty(target);
+                            EditorUtility.SetDirty(s.root);
                             AssetDatabase.SaveAssets();
                         }
                         else
@@ -197,19 +198,39 @@ namespace UnityExtensions
 #endif
     }
 
-
+#if UNITY_EDITOR
     internal interface ISubPrototype
     {
         Prototype super { get; set; }
+        Prototype root { get; }
     }
+#endif
 
-
-    public class SubPrototype<SuperPrototype> : Prototype, ISubPrototype where SuperPrototype : Prototype
+    public class SubPrototype<SuperPrototype> : Prototype
+#if UNITY_EDITOR
+        , ISubPrototype
+#endif
+        where SuperPrototype : Prototype
     {
-        [SerializeField, HideInInspector] SuperPrototype _super;
+        [SerializeField] SuperPrototype _super;
 
         public SuperPrototype super => _super;
 
+#if UNITY_EDITOR
         Prototype ISubPrototype.super { get => _super; set => _super = (SuperPrototype)value; }
+
+        Prototype ISubPrototype.root
+        {
+            get
+            {
+                Prototype root = _super;
+                while (root is ISubPrototype s)
+                {
+                    root = s.super;
+                }
+                return root;
+            }
+        }
+#endif
     }
 }
